@@ -981,23 +981,23 @@ HELP_TEXT = """
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def main():
-    # استيراد ملف الإعدادات للتأكد من قراءة البيانات
     import config
 
     _load_messages()
     log.info("⚡ هادر بوت — بدأ التشغيل...")
     
     try:
-        # الاتصال بالسيرفر أولاً بشكل صريح لإنهاء مشكلة الـ ConnectionError
+        # 1. الاتصال بالسيرفر
         await client.connect()
         
-        # تشغيل البوت بالتوكن بطريقة Telethon الرسمية والمستقرة
+        # 2. تسجيل الدخول الصريح بالتوكن
+        log.info("🔐 جاري التحقق من التوكن والـ API...")
         await client.start(bot_token=config.BOT_TOKEN)
         
         me = await client.get_me()
         log.info(f"Logged in: {me.first_name} (@{me.username})")
         
-        # إرسال رسالة التشغيل لقروب التحكم
+        # 3. إرسال رسالة التفعيل
         await client.send_message(
             config.CONTROL_CHAT,
             f"⚡ **هادر بوت شغّال! 🟢**\n"
@@ -1005,10 +1005,16 @@ async def main():
             f"أرسل /start للوحة التحكم أو /help للأوامر.",
             parse_mode="md"
         )
-    except Exception as e:
-        log.error(f"❌ حدث خطأ أثناء تشغيل البوت: {e}")
         
-    await client.run_until_disconnected()
+        # استمرار تشغيل البوت في حال نجاح الاتصال
+        await client.run_until_disconnected()
+
+    except telethon.errors.rpcerrorlist.ApiIdInvalidError:
+        log.error("❌ خطأ قاتل: الـ API_ID أو الـ API_HASH غير صحيح! تأكد منهم في موقع my.telegram.org")
+        return # إيقاف السيرفر تماماً لتعديل البيانات
+    except Exception as e:
+        log.error(f"❌ حدث خطأ غير متوقع: {e}")
+        return
 
 
 if __name__ == "__main__":
