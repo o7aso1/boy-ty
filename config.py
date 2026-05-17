@@ -10,7 +10,7 @@ API_HASH = "b40d413dc508dbbe838f5f67a68393fa"
 BOT_TOKEN = "7905187747:AAEvpRE2U8C94p9N3S6VqIic9rK7uO_jRDo"
 
 # 3. اسم الجلسة
-SESSION_NAME = "hadar_bot"
+SESSION_NAME = "hadar_new_session"
 
 # 4. الـ Telegram User ID الخاص بحسابك لإدارة البوت
 ADMIN_ID = 6432029959
