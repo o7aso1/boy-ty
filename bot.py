@@ -981,31 +981,33 @@ HELP_TEXT = """
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def main():
-    # استيراد ملف الإعدادات
+    # استيراد ملف الإعدادات للتأكد من قراءة البيانات
     import config
 
     _load_messages()
     log.info("⚡ هادر بوت — بدأ التشغيل...")
     
-    # 1. فتح الاتصال مع سيرفرات تليجرام أولاً (لحل مشكلة الـ ConnectionError)
-    await client.connect()
-    
-    # 2. التحقق من تسجيل الدخول الآمن كـ بوت رسمي باستخدام التوكن
-    if not await client.is_user_authorized():
-        log.info("🔐 جاري تسجيل الدخول باستخدام توكن البوت...")
-        await client.sign_in(bot_token=config.BOT_TOKEN)
-    
-    me = await client.get_me()
-    log.info(f"Logged in: {me.first_name} (@{me.username})")
     try:
+        # الاتصال بالسيرفر أولاً بشكل صريح لإنهاء مشكلة الـ ConnectionError
+        await client.connect()
+        
+        # تشغيل البوت بالتوكن بطريقة Telethon الرسمية والمستقرة
+        await client.start(bot_token=config.BOT_TOKEN)
+        
+        me = await client.get_me()
+        log.info(f"Logged in: {me.first_name} (@{me.username})")
+        
+        # إرسال رسالة التشغيل لقروب التحكم
         await client.send_message(
             config.CONTROL_CHAT,
             f"⚡ **هادر بوت شغّال! 🟢**\n"
             f"الحساب: {me.first_name} (@{me.username})\n"
             f"أرسل /start للوحة التحكم أو /help للأوامر.",
-            parse_mode="md")
+            parse_mode="md"
+        )
     except Exception as e:
-        log.warning(f"Welcome: {e}")
+        log.error(f"❌ حدث خطأ أثناء تشغيل البوت: {e}")
+        
     await client.run_until_disconnected()
 
 
