@@ -983,7 +983,7 @@ HELP_TEXT = """
 async def main():
     _load_messages()
     log.info("⚡ هادر بوت — بدأ التشغيل...")
-    await client.start()
+    await client.start(bot_token=config.BOT_TOKEN)
     me = await client.get_me()
     log.info(f"Logged in: {me.first_name} (@{me.username})")
     try:
