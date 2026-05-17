@@ -981,14 +981,15 @@ HELP_TEXT = """
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def main():
-    # استيراد ملف الإعدادات هنا لضمان قراءة البيانات بدون NameError
+    # استيراد ملف الإعدادات
     import config
 
     _load_messages()
     log.info("⚡ هادر بوت — بدأ التشغيل...")
     
-    # تشغيل البوت باستخدام التوكن الممرر من ملف config
-    await client.start(bot_token=config.BOT_TOKEN)
+    # حل مشكلة التعارض بالتسجيل الصريح كـ بوت رسمي عبر التوكن
+    if not await client.is_user_authorized():
+        await client.sign_in(bot_token=config.BOT_TOKEN)
     
     me = await client.get_me()
     log.info(f"Logged in: {me.first_name} (@{me.username})")
