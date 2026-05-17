@@ -981,14 +981,20 @@ HELP_TEXT = """
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def main():
+    # استيراد ملف الإعدادات هنا لضمان قراءة البيانات بدون NameError
+    import config
+
     _load_messages()
     log.info("⚡ هادر بوت — بدأ التشغيل...")
+    
+    # تشغيل البوت باستخدام التوكن الممرر من ملف config
     await client.start(bot_token=config.BOT_TOKEN)
+    
     me = await client.get_me()
     log.info(f"Logged in: {me.first_name} (@{me.username})")
     try:
         await client.send_message(
-            CONTROL_CHAT,
+            config.CONTROL_CHAT,
             f"⚡ **هادر بوت شغّال! 🟢**\n"
             f"الحساب: {me.first_name} (@{me.username})\n"
             f"أرسل /start للوحة التحكم أو /help للأوامر.",
