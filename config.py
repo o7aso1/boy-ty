@@ -4,15 +4,15 @@
 # ══════════════════════════════════════════════════════════
 
 # 1. احصل عليهم من: https://my.telegram.org/apps
-API_ID   = 0           # ← ضع رقمك هنا
-API_HASH = ""          # ← ضع الـ hash هنا
+API_ID   = 26082204          # ← ضع رقمك هنا
+API_HASH = "1fbd392907063fe108230fa22b4b75c0"          # ← ضع الـ hash هنا
 
 # 2. اسم الجلسة (أي اسم تختاره)
 SESSION_NAME = "hadir_session"
 
 # 3. الـ Telegram User ID خاصتك
 #    أرسل /start لـ @userinfobot في تيليجرام لتعرف رقمك
-ADMIN_ID = 0           # ← ضع رقمك هنا
+ADMIN_ID = 6636861893        # ← ضع رقمك هنا
 
 # 4. username أو id الشات اللي تبغى تتحكم منه
 #    ممكن تحط "me" أو "@username" خاصتك (Saved Messages)
