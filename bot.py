@@ -987,8 +987,12 @@ async def main():
     _load_messages()
     log.info("⚡ هادر بوت — بدأ التشغيل...")
     
-    # حل مشكلة التعارض بالتسجيل الصريح كـ بوت رسمي عبر التوكن
+    # 1. فتح الاتصال مع سيرفرات تليجرام أولاً (لحل مشكلة الـ ConnectionError)
+    await client.connect()
+    
+    # 2. التحقق من تسجيل الدخول الآمن كـ بوت رسمي باستخدام التوكن
     if not await client.is_user_authorized():
+        log.info("🔐 جاري تسجيل الدخول باستخدام توكن البوت...")
         await client.sign_in(bot_token=config.BOT_TOKEN)
     
     me = await client.get_me()
