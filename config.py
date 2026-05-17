@@ -1,19 +1,9 @@
-# ══════════════════════════════════════════════════════════
-#  ⚡ هادر بوت — الإعدادات
-#  عدّل هذا الملف بمعلوماتك قبل التشغيل
-# ══════════════════════════════════════════════════════════
+import os
 
-# 1. احصل عليهم من: https://my.telegram.org/apps
-API_ID   = 26082204          # ← ضع رقمك هنا
-API_HASH = "1fbd392907063fe108230fa22b4b75c0"          # ← ضع الـ hash هنا
+# سيحاول الكود قراءة القيم من متغيرات الاستضافة أولاً، وإذا لم يجدها سيأخذ القيم الافتراضية المكتوبة هنا
+BOT_TOKEN = os.getenv("BOT_TOKEN", "6547204382:AAGF11w-KmizISyGLA2OYW-geZ8DfarFivE")
 
-# 2. اسم الجلسة (أي اسم تختاره)
-SESSION_NAME = "hadir_session"
+# الـ API_ID يجب أن يكون رقماً (int)
+API_ID = int(os.getenv("API_ID", 24391216))
 
-# 3. الـ Telegram User ID خاصتك
-#    أرسل /start لـ @userinfobot في تيليجرام لتعرف رقمك
-ADMIN_ID = 6636861893        # ← ضع رقمك هنا
-
-# 4. username أو id الشات اللي تبغى تتحكم منه
-#    ممكن تحط "me" أو "@username" خاصتك (Saved Messages)
-CONTROL_CHAT = "me"   # ← "me" = رسائلك المحفوظة
+API_HASH = os.getenv("API_HASH", "b40d413dc508dbbe838f5f67a68393fa")
