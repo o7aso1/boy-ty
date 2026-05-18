@@ -1,2 +1,2 @@
-telethon==1.36.0
+aiogram==3.13.0
 cryptg
