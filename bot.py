@@ -262,3 +262,24 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+async def main():
+    log.info("🟢 جاري تشغيل البوت عبر Aiogram بشكل مستقر تماماً...")
+    
+    # فحص هل التوكن مقروء أصلاً أم لا
+    token_check = getattr(config, "BOT_TOKEN", None)
+    if not token_check:
+        log.error("❌ خطأ كاشف: ملف config.py لا يحتوي على متغير باسم BOT_TOKEN أو قيمته فارغة!")
+    else:
+        log.info(f"🔍 التوكن المستخدم يبدأ بـ: {str(token_check)[:5]}... (طوله: {len(token_check)} حرف)")
+
+    try:
+        bot_info = await bot.get_me()
+        log.info(f"Bot Started: @{bot_info.username}")
+        await bot.send_message(chat_id=config.CONTROL_CHAT, text=f"⚡ **هادر بوت شغّال بنجاح الآن! 🟢**\n\n👤 البوت: @{bot_info.username}")
+        await dp.start_polling(bot)
+    except Exception as e:
+        log.error(f"Fatal Error: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
