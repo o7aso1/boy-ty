@@ -21,14 +21,14 @@ import config
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     level=logging.INFO,
-    handlers=[\
+    handlers=[
         logging.FileHandler("hadir.log", encoding="utf-8"),
         logging.StreamHandler(),
     ],
 )
 log = logging.getLogger(__name__)
 
-# تعريف الكلاينت باستخدام الإعدادات من ملف config
+# تعريف الكلاينت للبوت الرسمي وتجاوز تعارض الـ API الشخصي
 client = TelegramClient(config.SESSION_NAME, config.API_ID, config.API_HASH)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -127,11 +127,9 @@ async def get_chat_id(target):
 # ══════════════════════════════════════════════════════════════════════════════
 @client.on(events.NewMessage(incoming=True))
 async def control_handler(event):
-    # التأكد من أن الرسالة قادمة من الآدمن أو شات التحكم
     if not is_admin(event.sender_id):
         return
 
-    # دعم CONTROL_CHAT كـ "me" أو آيدي معين
     is_control = False
     if config.CONTROL_CHAT == "me" and event.is_private:
         me = await client.get_me()
@@ -158,7 +156,6 @@ async def control_handler(event):
     cmd = parts[0].lower()
     args = parts[1].strip() if len(parts) > 1 else ""
 
-    # أمر البداية والمساعدة
     if cmd in ["/start", "/help"]:
         help_text = """⚡ **لوحة تحكم هادر بوت جاهزة**
 
@@ -183,7 +180,6 @@ async def control_handler(event):
         await event.reply(help_text, parse_mode="md")
         return
 
-    # تحديد الشات المستهدف
     if cmd == "/chat":
         if not args:
             await event.reply("❌ يرجى كتابة يوزر أو آيدي الشات بعد الأمر. مثال:\n`/chat @username`")
@@ -193,7 +189,6 @@ async def control_handler(event):
         await event.reply(f"🎯 تم تحديد الشات المستهدف بنجاح:\n`{args}`")
         return
 
-    # إضافة رسالة
     if cmd == "/add":
         if " | " not in args:
             await event.reply("❌ الطريقة الصحيحة للاستخدام:\n`/add التكرار | النص`\nمثال: `/add 3 | السلام عليكم`")
@@ -211,7 +206,6 @@ async def control_handler(event):
         await event.reply(f"✅ تمت إضافة الرسالة بنجاح وتكرارها: {repeat}")
         return
 
-    # مسح الرسائل
     if cmd == "/clear_msg":
         STATE["messages"] = []
         STATE["done_counts"] = []
@@ -220,7 +214,6 @@ async def control_handler(event):
         await event.reply("🗑️ تم مسح جميع الرسائل من القائمة.")
         return
 
-    # عرض القائمة
     if cmd == "/list":
         if not STATE["messages"]:
             await event.reply("📋 قائمة الرسائل فارغة حالياً.")
@@ -231,7 +224,6 @@ async def control_handler(event):
         await event.reply(res, parse_mode="md")
         return
 
-    # الفاصل الزمني
     if cmd == "/interval":
         if not args:
             await event.reply(f"⏱️ الفاصل الحالي: {STATE['interval_s']} ثانية.")
@@ -247,7 +239,6 @@ async def control_handler(event):
             await event.reply("❌ يرجى إدخال رقم صحيح.")
         return
 
-    # تغيير الوضع
     if cmd == "/mode":
         if args not in ["normal", "bullet", "human"]:
             await event.reply("❌ الأوضاع المتاحة هي: `normal` أو `bullet` أو `human`")
@@ -257,7 +248,6 @@ async def control_handler(event):
         await event.reply(f"⚙️ تم تغيير وضع الإرسال إلى: **{args}**")
         return
 
-    # عشوائي
     if cmd == "/random":
         if args == "on":
             STATE["random_order"] = True
@@ -270,7 +260,6 @@ async def control_handler(event):
         await event.reply(f"🔀 وضع الترتيب العشوائي: **{'مفعّل 🟢' if STATE['random_order'] else 'معطّل 🔴'}**")
         return
 
-    # بدء الإرسال
     if cmd == "/start_send":
         if not STATE["target_chat"]:
             await event.reply("❌ يجب تحديد الشات المستهدف أولاً باستخدام الأمر:\n`/chat @username`")
@@ -290,7 +279,6 @@ async def control_handler(event):
         asyncio.create_task(sending_loop())
         return
 
-    # إيقاف مؤقت
     if cmd == "/pause":
         if not STATE["running"]:
             await event.reply("🔴 البوت ليس في وضع إرسال حالياً لكي تقوم بإيقافه.")
@@ -301,7 +289,6 @@ async def control_handler(event):
         await event.reply(status_msg)
         return
 
-    # إيقاف نهائي
     if cmd == "/stop":
         if not STATE["running"]:
             await event.reply("🔴 البوت متوقف بالفعل.")
@@ -310,7 +297,6 @@ async def control_handler(event):
         await event.reply("🛑 جاري إيقاف عملية الإرسال وتصفير العدادات...")
         return
 
-    # عرض الحالة
     if cmd == "/status":
         status_str = "🟢 يعمل" if STATE["running"] else "🔴 متوقف"
         if STATE["running"] and STATE["paused"]:
@@ -325,17 +311,16 @@ async def control_handler(event):
         await event.reply(info, parse_mode="md")
         return
 
-    # إعادة ضبط المصنع
     if cmd == "/reset":
         global DEFAULT_STATE
         STATE = deepcopy(DEFAULT_STATE)
         _save_state()
         _save_messages_to_file()
-        await event.reply("⚙️ تم إعادة إعدادات البوت والرسائل إلى الوضع الافتراضي للشركة.")
+        await event.reply("⚙️ تم إعادة إعدادات البوت والرسائل إلى الوضع الافتراضي.")
         return
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  حارس الشات (Guard) وباقي الفعاليات التلقائية
+#  حارس الشات (Guard)
 # ══════════════════════════════════════════════════════════════════════════════
 @client.on(events.NewMessage(incoming=True))
 async def guard_handler(event):
@@ -370,7 +355,6 @@ async def sending_loop():
             await asyncio.sleep(1)
             continue
 
-        # فحص هل انتهت جميع تكرارات الرسائل؟
         all_done = True
         indices = list(range(len(STATE["messages"])))
         
@@ -385,7 +369,6 @@ async def sending_loop():
             log.info("✅ تم الانتهاء من إرسال جميع الرسائل المحددة وتكراراتها.")
             break
 
-        # اختيار الرسالة التالية (عشوائي أو بالترتيب)
         if STATE["random_order"]:
             current_idx = random.choice(active_indices)
         else:
@@ -393,22 +376,18 @@ async def sending_loop():
 
         msg_obj = STATE["messages"][current_idx]
         text_to_send = msg_obj["text"]
-
-        # معالجة النصوص والوضع البشري أو العادي
         target = STATE["target_chat"]
+
         try:
             if STATE["mode"] == "human":
-                # محاكاة الكتابة الطبيعية (Typing Status)
                 await client(SetTypingRequest(
                     peer=target,
                     action=SendMessageTypingAction(progress=0)
                 ))
                 await asyncio.sleep(len(text_to_send) * (STATE["human_speed_ms"] / 1000.0))
 
-            # الإرسال الفعلي للرسالة
             await client.send_message(target, text_to_send)
             
-            # زيادة عداد الإرسال لهذه الرسالة المحددة
             STATE["done_counts"][current_idx] += 1
             _save_state()
 
@@ -420,18 +399,15 @@ async def sending_loop():
             log.error(f"❌ فشل إرسال الرسالة إلى الشات: {e}")
             await asyncio.sleep(2)
 
-        # الانتظار حسب الفاصل الزمني (يتخطى الانتظار لو كان الوضع رصاصة bullet)
         if STATE["mode"] != "bullet" and STATE["running"] and not STATE["stop_requested"]:
             await asyncio.sleep(STATE["interval_s"])
 
-    # عند الخروج من الحلقة التلقائية، نعيد تصفير العدادات
     STATE["running"] = False
     STATE["stop_requested"] = False
     for i in range(len(STATE["done_counts"])):
         STATE["done_counts"][i] = 0
     _save_state()
     
-    # إعلام الآدمن في قروب التحكم بانتهاء العملية
     try:
         await client.send_message(config.CONTROL_CHAT, "🏁 **تم الانتهاء من عملية الإرسال التلقائي بالكامل وتصفير العدادات بنجاح!**")
     except Exception:
@@ -446,17 +422,17 @@ async def main():
     log.info("⚡ هادر بوت — بدأ التشغيل والاتصال بأمان...")
     
     try:
-        # 1. الاتصال المباشر بالسيرفر بشكل مستقل لإنهاء الـ ConnectionError
+        # 1. الاتصال بالسيرفر
         await client.connect()
         
-        # 2. تشغيل البوت عبر التوكن بالصيغة الرسمية والمحمية المستقرة لـ Telethon
-        log.info("🔐 جاري تسجيل الدخول بالتوكن والـ API...")
-        await client.start(bot_token=config.BOT_TOKEN)
+        # 2. تسجيل الدخول الصريح بالتوكن
+        log.info("🔐 جاري تسجيل الدخول بالتوكن...")
+        await client.sign_in(bot_token=config.BOT_TOKEN)
         
         me = await client.get_me()
         log.info(f"Logged in successfully: {me.first_name} (@{me.username})")
         
-        # 3. إرسال تقرير التفعيل الأول لقروب التحكم الخاص بك
+        # 3. إرسال تقرير التفعيل لجروب التحكم
         await client.send_message(
             config.CONTROL_CHAT,
             f"⚡ **هادر بوت شغّال بنجاح الآن! 🟢**\n\n"
@@ -469,10 +445,8 @@ async def main():
         await client.run_until_disconnected()
 
     except Exception as e:
-        # مسك الخطأ العام وحمايته من انهيار السيرفر لكي لا يقع السيرفر في كراش لوب
         log.error(f"❌ حدث خطأ داخلي أثناء التشغيل: {e}")
         log.info("ℹ️ يرجى التأكد من صحة التوكن وآيدي CONTROL_CHAT المكتوبين لديك.")
-        # إعطاء فرصة للنظام بدون استهلاك موارد المعالج
         await asyncio.sleep(15)
 
 
