@@ -94,7 +94,24 @@ async def _db_get_user(uid: str):
 
 async def _db_update_user(uid: str, updates: dict):
     """ تحديث حقول معينة للمستخدم في قاعدة البيانات السحابية بأمان تام """
-    await supabase_request("PATCH", f"bot_users?user_id=eq.{uid}", updates)
+    try:
+        # تأكد من أن البيانات التي سيتم تحديثها تحتوي على مفتاح user_id
+        if "user_id" not in updates:
+            updates["user_id"] = uid
+            
+        # حفظ البيانات بشكل صحيح
+        result = await supabase_request("PATCH", f"bot_users?user_id=eq.{uid}", updates)
+        
+        # تحقق من النتيجة
+        if result is None:
+            log.error(f"Failed to update user {uid}")
+            return False
+            
+        log.info(f"Successfully updated user {uid}")
+        return True
+    except Exception as e:
+        log.error(f"Error updating user {uid}: {e}")
+        return False
 
 def parse_repeater_text(text: str) -> str:
     text = text.strip()
@@ -192,30 +209,45 @@ async def handle_text(message: Message):
 
     if aw == "rep_chat":
         cfg["rep_chat"] = text
-        await _db_update_user(uid, cfg)
-        await message.answer("✅ تم حفظ شات الوجهة سحابياً بنجاح.", reply_markup=kb_repeater(cfg))
+        success = await _db_update_user(uid, cfg)
+        if success:
+            await message.answer("✅ تم حفظ شات الوجهة سحابياً بنجاح.", reply_markup=kb_repeater(cfg))
+        else:
+            await message.answer("❌ حدث خطأ أثناء حفظ الشات.")
     elif aw == "rep_set_user":
         cfg["rep_target_user"] = text
-        await _db_update_user(uid, cfg)
-        await message.answer("✅ تم حفظ الشخص المستهدف سحابياً بنجاح.", reply_markup=kb_repeater(cfg))
+        success = await _db_update_user(uid, cfg)
+        if success:
+            await message.answer("✅ تم حفظ الشخص المستهدف سحابياً بنجاح.", reply_markup=kb_repeater(cfg))
+        else:
+            await message.answer("❌ حدث خطأ أثناء حفظ المستخدم.")
     elif aw == "add_msg":
         m = re.match(r"^(\d+)\s*\|\s*(.+)$", text, re.DOTALL)
         repeat, msg_text = (int(m.group(1)), m.group(2).strip()) if m else (1, text)
         msgs = cfg.get("messages", [])
         msgs.append({"text": msg_text, "repeat": repeat})
         cfg["messages"] = msgs
-        await _db_update_user(uid, cfg)
-        await message.answer("✅ تم إضافة الرسالة وحفظها في سوبابيس.", reply_markup=kb_msgs())
+        success = await _db_update_user(uid, cfg)
+        if success:
+            await message.answer("✅ تم إضافة الرسالة وحفظها في سوبابيس.", reply_markup=kb_msgs())
+        else:
+            await message.answer("❌ حدث خطأ أثناء حفظ الرسالة.")
     elif aw == "set_target":
         cfg["target"] = text
-        await _db_update_user(uid, cfg)
-        await message.answer("✅ تم تحديث المستهدف الرئيسي.", reply_markup=kb_settings(cfg))
+        success = await _db_update_user(uid, cfg)
+        if success:
+            await message.answer("✅ تم تحديث المستهدف الرئيسي.", reply_markup=kb_settings(cfg))
+        else:
+            await message.answer("❌ حدث خطأ أثناء حفظ المستهدف.")
     elif aw == "set_interval":
         try:
             s = float(text)
             cfg["interval_s"] = s
-            await _db_update_user(uid, cfg)
-            await message.answer(f"✅ الفاصل أصبح {s} ثانية.", reply_markup=kb_settings(cfg))
+            success = await _db_update_user(uid, cfg)
+            if success:
+                await message.answer(f"✅ الفاصل أصبح {s} ثانية.", reply_markup=kb_settings(cfg))
+            else:
+                await message.answer("❌ حدث خطأ أثناء حفظ الفاصل.")
         except Exception as e: 
             log.error(f"Error setting interval: {e}")
             await message.answer("❌ قيمة خاطئة.")
@@ -243,20 +275,26 @@ async def cb_handler(cb: CallbackQuery):
         elif data == "rep_toggle":
             if cfg.get("rep_active"):
                 cfg["rep_active"] = False
-                await _db_update_user(uid, cfg)
-                if uid in REPEATER_TASKS:
-                    try: await REPEATER_TASKS[uid].disconnect()
-                    except Exception as e: log.error(f"Error disconnecting repeater: {e}")
-                    REPEATER_TASKS.pop(uid, None)
-                await cb.message.edit_text("🛑 تم إيقاف محرك التكرار بنجاح.", reply_markup=kb_repeater(cfg))
+                success = await _db_update_user(uid, cfg)
+                if success:
+                    if uid in REPEATER_TASKS:
+                        try: await REPEATER_TASKS[uid].disconnect()
+                        except Exception as e: log.error(f"Error disconnecting repeater: {e}")
+                        REPEATER_TASKS.pop(uid, None)
+                    await cb.message.edit_text("🛑 تم إيقاف محرك التكرار بنجاح.", reply_markup=kb_repeater(cfg))
+                else:
+                    await cb.message.edit_text("❌ حدث خطأ أثناء إيقاف محرك التكرار.", reply_markup=kb_repeater(cfg))
             else:
                 if not cfg.get("rep_chat") or not cfg.get("rep_target_user"):
                     await bot.send_message(int(uid), "❌ حدد الشات والشخص أولاً.")
                     return
                 cfg["rep_active"] = True
-                await _db_update_user(uid, cfg)
-                asyncio.create_task(start_repeater_engine(uid))
-                await cb.message.edit_text("🟢 تم تشغيل المحرك السحابي بنجاح بنمط الذاكرة والمزامنة!", reply_markup=kb_repeater(cfg))
+                success = await _db_update_user(uid, cfg)
+                if success:
+                    asyncio.create_task(start_repeater_engine(uid))
+                    await cb.message.edit_text("🟢 تم تشغيل المحرك السحابي بنجاح بنمط الذاكرة والمزامنة!", reply_markup=kb_repeater(cfg))
+                else:
+                    await cb.message.edit_text("❌ حدث خطأ أثناء تشغيل محرك التكرار.", reply_markup=kb_repeater(cfg))
         elif data == "toggle_send":
             if uid in ACTIVE_TASKS:
                 ACTIVE_TASKS[uid].cancel(); ACTIVE_TASKS.pop(uid, None)
@@ -277,8 +315,11 @@ async def cb_handler(cb: CallbackQuery):
             await cb.message.edit_text(out, parse_mode="HTML", reply_markup=kb_msgs())
         elif data == "clear_msgs":
             cfg["messages"] = []
-            await _db_update_user(uid, cfg)
-            await cb.message.edit_text("🗑 تم تفريغ الرسائل بنجاح.", reply_markup=kb_msgs())
+            success = await _db_update_user(uid, cfg)
+            if success:
+                await cb.message.edit_text("🗑 تم تفريغ الرسائل بنجاح.", reply_markup=kb_msgs())
+            else:
+                await cb.message.edit_text("❌ حدث خطأ أثناء مسح الرسائل.", reply_markup=kb_msgs())
         elif data == "menu_settings":
             await cb.message.edit_text("⚙️ الإعدادات", reply_markup=kb_settings(cfg))
     except Exception as e:
@@ -460,13 +501,16 @@ async def api_send_code(req):
             cfg = await _db_get_user(uid)
             cfg["phone"] = item["phone"]
             cfg["session_string"] = string_session_text
-            await _db_update_user(uid, cfg)
+            success = await _db_update_user(uid, cfg)
             
-            del PENDING_LOGINS[uid]
-            
-            try: await bot.send_message(int(uid), "🟢 <b>تم حفظ حسابك وإعداداتك سحابياً في Supabase بنجاح! لن تحتاج للتسجيل مجدداً.</b>", parse_mode="HTML", reply_markup=kb_main(uid))
-            except Exception as e: log.error(f"Error sending success message: {e}")
-            return web.json_response({"success": True})
+            if success:
+                del PENDING_LOGINS[uid]
+                
+                try: await bot.send_message(int(uid), "🟢 <b>تم حفظ حسابك وإعداداتك سحابياً في Supabase بنجاح! لن تحتاج للتسجيل مجدداً.</b>", parse_mode="HTML", reply_markup=kb_main(uid))
+                except Exception as e: log.error(f"Error sending success message: {e}")
+                return web.json_response({"success": True})
+            else:
+                return web.json_response({"success": False, "error": "فشل في حفظ البيانات"})
         except SessionPasswordNeededError: return web.json_response({"success": False, "error": "PASSWORD_NEEDED"})
     except Exception as e: 
         log.error(f"Error in api_send_code: {e}")
@@ -487,12 +531,15 @@ async def api_send_password(req):
         cfg = await _db_get_user(uid)
         cfg["phone"] = item["phone"]
         cfg["session_string"] = string_session_text
-        await _db_update_user(uid, cfg)
+        success = await _db_update_user(uid, cfg)
         
-        del PENDING_LOGINS[uid]
-        try: await bot.send_message(int(uid), "🟢 <b>تم الربط بنجاح!</b>", parse_mode="HTML", reply_markup=kb_main(uid))
-        except Exception as e: log.error(f"Error sending success message: {e}")
-        return web.json_response({"success": True})
+        if success:
+            del PENDING_LOGINS[uid]
+            try: await bot.send_message(int(uid), "🟢 <b>تم الربط بنجاح!</b>", parse_mode="HTML", reply_markup=kb_main(uid))
+            except Exception as e: log.error(f"Error sending success message: {e}")
+            return web.json_response({"success": True})
+        else:
+            return web.json_response({"success": False, "error": "فشل في حفظ البيانات"})
     except Exception as e: 
         log.error(f"Error in api_send_password: {e}")
         return web.json_response({"success": False, "error": str(e)})
