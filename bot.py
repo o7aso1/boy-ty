@@ -164,4 +164,4 @@ def kb_msgs():
 def kb_settings(uid: str):
     cfg = _get_user(uid)
     r_lbl = "✅ عشوائي: مفعّل" if cfg["random_order"] else "❌ عشوائي: معطّل"
-    rep_lbl = "✅ الرد: مفعّل" if cfg["reply_on"] else "❌ الرد:
+    rep_lbl = "✅ الرد: مفعّل" if cfg["reply_on"] else "❌ الرد:"
