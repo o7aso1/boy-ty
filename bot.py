@@ -1,285 +1,152 @@
 """
-⚡ هادر بوت — النسخة المستقرة كلياً (Aiogram)
-تشتغل بالتوكن فقط وبدون الحاجة لـ API_ID أو API_HASH الشخصي نهائياً.
+⚡ هادر بوت — النسخة الاحترافية متعددة المستخدمين (تسجيل دخول ذكي)
+البوت يستقبل الأوامر من المستخدمين ويربط حساباتهم الشخصية تلقائياً عبر التوكن.
 """
 
 import asyncio
-import json
 import os
-import random
 import logging
-from copy import deepcopy
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from telethon import TelegramClient
+from telethon.errors import SessionPasswordNeededError
 import config
 
-logging.basicConfig(
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    level=logging.INFO,
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
-# تشغيل البوت بالتوكن فقط وتخطي تعقيدات تليجرام
 bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher()
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  الحالة الكاملة والملفات
-# ══════════════════════════════════════════════════════════════════════════════
-DEFAULT_STATE = {
-    "running": False,
-    "paused": False,
-    "target_chat": None,
-    "messages": [],       # [{text, repeat}]
-    "done_counts": [],
-    "interval_s": 2.0,
-    "mode": "normal",     # normal | bullet | human
-}
+# حفظ الكلاينتات النشطة بالذاكرة مؤقتاً أثناء تسجيل الدخول
+USER_CLIENTS = {}
 
-STATE = deepcopy(DEFAULT_STATE)
-STATE_FILE = "bot_state.json"
-MESSAGES_FILE = "messages.json"
-
-def _load_all():
-    global STATE
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-                for k, v in saved.items():
-                    if k in STATE: STATE[k] = v
-        except Exception: pass
-    if os.path.exists(MESSAGES_FILE):
-        try:
-            with open(MESSAGES_FILE, "r", encoding="utf-8") as f:
-                STATE["messages"] = json.load(f)
-            STATE["done_counts"] = [0] * len(STATE["messages"])
-        except Exception: pass
-
-def _save_all():
-    try:
-        with open(STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump(STATE, f, ensure_ascii=False, indent=2)
-        with open(MESSAGES_FILE, "w", encoding="utf-8") as f:
-            json.dump(STATE["messages"], f, ensure_ascii=False, indent=2)
-    except Exception: pass
-
-_load_all()
-
-def is_admin(user_id: int) -> bool:
-    return str(user_id) == str(config.ADMIN_ID)
+# حالات نظام الفلو (FSM) لتوجيه المستخدم خطوة بخطوة
+class LoginStates(StatesGroup):
+    waiting_for_phone = State()
+    waiting_for_code = State()
+    waiting_for_password = State()
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  الأوامر ولوحة التحكم
+#  الأوامر العامة للمستخدمين
 # ══════════════════════════════════════════════════════════════════════════════
-@dp.message(Command("start", "help"))
+@dp.message(Command("start"))
 async def cmd_start(message: Message):
-    if not is_admin(message.from_user.id): return
-    help_text = """⚡ **لوحة تحكم هادر بوت (النسخة المستقرة)**
-
-**📌 الإعدادات:**
-`/chat @username` — تحديد القروب المستهدف (أو آيدي)
-`/add تكرار | النص` — إضافة رسالة (مثال: `/add 5 | هلا بالعيال`)
-`/clear_msg` — مسح كل الرسائل
-`/list` — عرض الرسائل الحالية
-
-**⏱️ خيارات متقدمة:**
-`/interval 2` — الفاصل الزمني بالثواني
-`/mode normal|bullet|human` — وضع الإرسال
-
-**🟢 التشغيل والتحكم:**
-`/start_send` — ابدأ الإرسال التلقائي
-`/pause` — إيقاف مؤقت / استئناف
-`/stop` — إيقاف نهائي وتصفير العدادات
-`/status` — عرض الحالة الحالية
-"""
-    await message.reply(help_text, parse_mode="Markdown")
-
-@dp.message(Command("chat"))
-async def cmd_chat(message: Message):
-    if not is_admin(message.from_user.id): return
-    args = message.text.replace("/chat", "").strip()
-    if not args:
-        await message.reply("❌ اكتب يوزر الشات أو الآيدي بعد الأمر.")
-        return
-    STATE["target_chat"] = args
-    _save_all()
-    await message.reply(f"🎯 تم تحديد الشات المستهدف: `{args}`", parse_mode="Markdown")
-
-@dp.message(Command("add"))
-async def cmd_add(message: Message):
-    if not is_admin(message.from_user.id): return
-    args = message.text.replace("/add", "").strip()
-    if " | " not in args:
-        await message.reply("❌ الاستخدام: `/add التكرار | النص`")
-        return
-    rep_part, text_part = args.split(" | ", 1)
-    try:
-        repeat = int(rep_part)
-        STATE["messages"].append({"text": text_part, "repeat": repeat})
-        STATE["done_counts"].append(0)
-        _save_all()
-        await message.reply(f"✅ تمت الإضافة بنجاح وتكرارها: {repeat}")
-    except ValueError:
-        await message.reply("❌ التكرار يجب أن يكون رقماً.")
-
-@dp.message(Command("clear_msg"))
-async def cmd_clear(message: Message):
-    if not is_admin(message.from_user.id): return
-    STATE["messages"] = []
-    STATE["done_counts"] = []
-    _save_all()
-    await message.reply("🗑️ تم مسح جميع الرسائل.")
-
-@dp.message(Command("list"))
-async def cmd_list(message: Message):
-    if not is_admin(message.from_user.id): return
-    if not STATE["messages"]:
-        await message.reply("📋 القائمة فارغة حالياً.")
-        return
-    res = "📋 **الرسائل الحالية:**\n\n"
-    for i, m in enumerate(STATE["messages"]):
-        res += f"{i+1}. `{m['text']}` (تكرار: {m['repeat']})\n"
-    await message.reply(res, parse_mode="Markdown")
-
-@dp.message(Command("interval"))
-async def cmd_interval(message: Message):
-    if not is_admin(message.from_user.id): return
-    args = message.text.replace("/interval", "").strip()
-    try:
-        val = float(args)
-        STATE["interval_s"] = max(0.1, val)
-        _save_all()
-        await message.reply(f"⏱️ تم تعديل الفاصل إلى: {STATE['interval_s']} ثانية.")
-    except ValueError:
-        await message.reply("❌ أدخل رقماً صحيحاً.")
-
-@dp.message(Command("mode"))
-async def cmd_mode(message: Message):
-    if not is_admin(message.from_user.id): return
-    args = message.text.replace("/mode", "").strip()
-    if args not in ["normal", "bullet", "human"]:
-        await message.reply("❌ الأوضاع المتاحة: `normal`, `bullet`, `human`")
-        return
-    STATE["mode"] = args
-    _save_all()
-    await message.reply(f"⚙️ تم تغيير الوضع إلى: **{args}**", parse_mode="Markdown")
-
-@dp.message(Command("start_send"))
-async def cmd_start_send(message: Message):
-    if not is_admin(message.from_user.id): return
-    if not STATE["target_chat"]:
-        await message.reply("❌ حدد الشات المستهدف أولاً بـ `/chat`")
-        return
-    if not STATE["messages"]:
-        await message.reply("❌ القائمة فارغة! أضف رسائل بـ `/add`")
-        return
-    if STATE["running"]:
-        await message.reply("🟢 الإرسال يعمل بالفعل.")
-        return
-
-    STATE["running"] = True
-    STATE["paused"] = False
-    _save_all()
-    await message.reply("🚀 **بدأ الإرسال التلقائي الآن!**")
-    asyncio.create_task(sending_loop())
-
-@dp.message(Command("pause"))
-async def cmd_pause(message: Message):
-    if not is_admin(message.from_user.id): return
-    if not STATE["running"]: return
-    STATE["paused"] = not STATE["paused"]
-    _save_all()
-    await message.reply("⏸️ تم الإيقاف مؤقتاً." if STATE["paused"] else "▶️ تم الاستئناف.")
-
-@dp.message(Command("stop"))
-async def cmd_stop(message: Message):
-    if not is_admin(message.from_user.id): return
-    STATE["running"] = False
-    await message.reply("🛑 جاري إيقاف عملية الإرسال وتصفير العدادات...")
-
-@dp.message(Command("status"))
-async def cmd_status(message: Message):
-    if not is_admin(message.from_user.id): return
-    status_str = "🟢 يعمل" if STATE["running"] else "🔴 متوقف"
-    if STATE["running"] and STATE["paused"]: status_str = "⏸️ موقوف مؤقتاً"
-    info = f"📊 **الحالة:** {status_str}\n🎯 **الهدف:** `{STATE['target_chat']}`\n⏱️ **الفاصل:** {STATE['interval_s']} ثانية"
-    await message.reply(info, parse_mode="Markdown")
+    welcome_text = (
+        "👋 **أهلاً بك في هادر بوت للإرسال التلقائي!**\n\n"
+        "عشان البوت يرسل باسم حسابك الشخصي في الشات اللي تبغاه، تحتاج تربط حسابك أولاً بطريقة آمنة وسهلة.\n\n"
+        "👉 أرسل أمر `/login` للبدء في ربط حسابك الآن."
+    )
+    await message.reply(welcome_text, parse_mode="Markdown")
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  حلقة الإرسال التلقائي المستقرة
+#  خطوات تسجيل الدخول الذكي (بدون ملفات جلسة يدوية)
 # ══════════════════════════════════════════════════════════════════════════════
-async def sending_loop():
-    while STATE["running"]:
-        if STATE["paused"]:
-            await asyncio.sleep(1)
-            continue
 
-        active_indices = [i for i, m in enumerate(STATE["messages"]) if STATE["done_counts"][i] < m["repeat"]]
-        if not active_indices:
-            break
+# 1. طلب رقم الجوال
+@dp.message(Command("login"))
+async def cmd_login(message: Message, state: FSMContext):
+    await message.reply("📱 ممتاز، أرسل الآن رقم جوالك مع رمز الدولة.\nمثال: `+9665xxxxxxxx`", parse_mode="Markdown")
+    await state.set_state(LoginStates.waiting_for_phone)
 
-        current_idx = active_indices[0]
-        msg_obj = STATE["messages"][current_idx]
-        text_to_send = msg_obj["text"]
-        target = STATE["target_chat"]
-
-        try:
-            if STATE["mode"] == "human":
-                await bot.send_chat_action(chat_id=target, action="typing")
-                await asyncio.sleep(len(text_to_send) * 0.1)
-
-            await bot.send_message(chat_id=target, text=text_to_send)
-            STATE["done_counts"][current_idx] += 1
-            _save_all()
-        except Exception as e:
-            log.error(f"Error sending: {e}")
-            await asyncio.sleep(4)
-
-        if STATE["mode"] != "bullet" and STATE["running"]:
-            await asyncio.sleep(STATE["interval_s"])
-
-    STATE["running"] = False
-    for i in range(len(STATE["done_counts"])): STATE["done_counts"][i] = 0
-    _save_all()
-    try:
-        await bot.send_message(chat_id=config.CONTROL_CHAT, text="🏁 **تم الانتهاء من عملية الإرسال التلقائي بالكامل!**")
-    except Exception: pass
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  بدء التشغيل
-# ══════════════════════════════════════════════════════════════════════════════
-async def main():
-    log.info("🟢 جاري تشغيل البوت عبر Aiogram بشكل مستقر تماماً...")
-    try:
-        bot_info = await bot.get_me()
-        log.info(f"Bot Started: @{bot_info.username}")
-        await bot.send_message(chat_id=config.CONTROL_CHAT, text=f"⚡ **هادر بوت شغّال بنجاح الآن عبر السيرفر المستقر! 🟢**\n\n👤 البوت: @{bot_info.username}")
-        await dp.start_polling(bot)
-    except Exception as e:
-        log.error(f"Fatal Error: {e}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
-async def main():
-    log.info("🟢 جاري تشغيل البوت عبر Aiogram بشكل مستقر تماماً...")
+# 2. استقبال الرقم وبدء جلسة Telethon بالخلفية
+@dp.message(LoginStates.waiting_for_phone)
+async def process_phone(message: Message, state: FSMContext):
+    phone = message.text.strip().replace(" ", "")
+    user_id = message.from_user.id
     
-    # فحص هل التوكن مقروء أصلاً أم لا
-    token_check = getattr(config, "BOT_TOKEN", None)
-    if not token_check:
-        log.error("❌ خطأ كاشف: ملف config.py لا يحتوي على متغير باسم BOT_TOKEN أو قيمته فارغة!")
-    else:
-        log.info(f"🔍 التوكن المستخدم يبدأ بـ: {str(token_check)[:5]}... (طوله: {len(token_check)} حرف)")
-
+    await message.reply("⏳ جاري الاتصال بسيرفرات تليجرام وإرسال كود التحقق لك...")
+    
+    # إنشاء اسم ملف جلسة خاص بهذا المستخدم بناءً على الآيدي حقه
+    session_path = f"sessions/user_{user_id}"
+    os.makedirs("sessions", exist_ok=True)
+    
+    client = TelegramClient(session_path, config.API_ID, config.API_HASH)
+    await client.connect()
+    
     try:
-        bot_info = await bot.get_me()
-        log.info(f"Bot Started: @{bot_info.username}")
-        await bot.send_message(chat_id=config.CONTROL_CHAT, text=f"⚡ **هادر بوت شغّال بنجاح الآن! 🟢**\n\n👤 البوت: @{bot_info.username}")
-        await dp.start_polling(bot)
+        # إرسال الكود لحساب المستخدم
+        send_code_result = await client.send_code_request(phone)
+        
+        # حفظ الكلاينت وبيانات الجلسة مؤقتاً بالذاكرة لاستكمال الخطوات
+        USER_CLIENTS[user_id] = {
+            "client": client,
+            "phone": phone,
+            "phone_code_hash": send_code_result.phone_code_hash
+        }
+        
+        await message.reply("📩 وصلك الآن كود تحقق من تليجرام (داخل تطبيق تليجرام نفسه).\nأرسل الكود هنا في الشات فوراً:")
+        await state.set_state(LoginStates.waiting_for_code)
+        
     except Exception as e:
-        log.error(f"Fatal Error: {e}")
+        log.error(f"Login error for {user_id}: {e}")
+        await message.reply(f"❌ حدث خطأ أثناء إرسال الكود: {e}\nأرسل `/login` للمحاولة مجدداً.")
+        await client.disconnect()
+        await state.clear()
+
+# 3. استقبال كود التحقق وتفعيل الحساب الشخصي
+@dp.message(LoginStates.waiting_for_code)
+async def process_code(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    code = message.text.strip()
+    
+    if user_id not in USER_CLIENTS:
+        await message.reply("❌ انتهت مهلة الجلسة، أرسل `/login` من جديد.")
+        await state.clear()
+        return
+        
+    user_data = USER_CLIENTS[user_id]
+    client = user_data["client"]
+    
+    try:
+        # محاولة تسجيل الدخول بالكود المكتوب
+        await client.sign_in(
+            phone=user_data["phone"],
+            code=code,
+            phone_code_hash=user_data["phone_code_hash"]
+        )
+        
+        await message.reply("🟢 **تم ربط حسابك الشخصي بنجاح تام!**\nالحين البوت يقدر يرسل تلقائياً باسمك.\n\nتستطيع البدء باستخدام الأوامر لتجهيز الإرسال.")
+        await state.clear()
+        # هنا الجلسة انحفظت بملف اسمه sessions/user_ID.session وتقدر تستدعيها وقت الإرسال التلقائي
+        
+    except SessionPasswordNeededError:
+        # إذا كان المستخدم مفعل التحقق بخطوتين (المرور الثاني)
+        await message.reply("🔒 حسابك محمي بكلمة مرور (التحقق بخطوتين)، يرجى إرسال كلمة المرور الخاصة بك:")
+        await state.set_state(LoginStates.waiting_for_password)
+        
+    except Exception as e:
+        await message.reply(f"❌ الكود غير صحيح أو منتهي: {e}\nأرسل `/login` للمحاولة مجدداً.")
+        await client.disconnect()
+        await state.clear()
+
+# 4. استقبال الباسورد (لو مفعّل التحقق بخطوتين)
+@dp.message(LoginStates.waiting_for_password)
+async def process_password(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    password = message.text.strip()
+    
+    user_data = USER_CLIENTS[user_id]
+    client = user_data["client"]
+    
+    try:
+        await client.sign_in(password=password)
+        await message.reply("🟢 **تم التحقق من كلمة المرور وربط حسابك الشخصي بنجاح!**")
+        await state.clear()
+    except Exception as e:
+        await message.reply(f"❌ كلمة المرور خاطئة: {e}\nأرسل `/login` للمحاولة مجدداً.")
+        await client.disconnect()
+        await state.clear()
+
+
+async def main():
+    log.info("🚀 تشغيل السيرفر متعدد المستخدمين بذخيرة تسجيل الدخول التلقائي...")
+    bot_info = await bot.get_me()
+    log.info(f"Bot @{bot_info.username} is running...")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
