@@ -1,4 +1,5 @@
-aiogram==3.13.0
-telethon==1.35.0
-aiohttp==3.10.5
-cryptg
+aiogram==3.11.0
+aiohttp==3.9.5
+telethon==1.36.0
+asyncio==3.4.3
+python-dotenv==1.0.1
