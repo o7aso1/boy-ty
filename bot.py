@@ -42,7 +42,7 @@ REPEATER_TASKS = {}   # uid -> TelegramClient
 AWAITING       = {}   # uid -> str
 
 # ══════════════════════════════════════════════════════════════════════════════
--- بوابات ومحركات الاتصال بـ Supabase
+# -- بوابات ومحركات الاتصال بـ Supabase
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def supabase_request(method: str, endpoint: str, payload=None):
