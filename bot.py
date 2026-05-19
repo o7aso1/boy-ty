@@ -76,14 +76,12 @@ def _get_user(uid: str):
             "suffix_pos": "end",
             "reply_on": False,
             "human_delay_ms": 80,
-            # بيانات قسم التكرار الجديد
             "rep_chat": "",
             "rep_target_user": "",
             "rep_active": False
         }
         _save_data(data)
     else:
-        # التأكد من وجود مفاتيح قسم التكرار للترقية داخل الملف
         updated = False
         for key, default in [("rep_chat", ""), ("rep_target_user", ""), ("rep_active", False)]:
             if key not in data[uid]:
@@ -197,7 +195,7 @@ def _status_text(uid: str):
     )
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  الأوامر النصية واستقبال المدخلات للقسم الجديد والقديم
+#  الأوامر النصية وتصحيح استقبال المدخلات لقسم التكرار (Handler)
 # ══════════════════════════════════════════════════════════════════════════════
 
 @dp.message(Command("start"))
@@ -225,23 +223,32 @@ async def cmd_menu(message: Message):
     uid = str(message.from_user.id)
     await message.answer(_status_text(uid), parse_mode="HTML", reply_markup=kb_main(uid))
 
-@dp.message(F.text & ~F.text.startswith("/"))
+# إزالة فلترة النفي لتجنب ضياع المدخلات التي تبدأ بـ @ أو -
+@dp.message(F.text)
 async def handle_text(message: Message):
     uid = str(message.from_user.id)
     aw = AWAITING.get(uid)
-    if not aw: return
+    
+    # إذا لم نكن ننتظر شيء وكان نصاً عادياً يبدأ بـ / نتركه للأوامر
+    if not aw and message.text.startswith("/"): 
+        return
 
     text = message.text.strip()
+    
+    if not aw:
+        return
+
+    # حذف الحالة فوراً لمنع التكرار
     del AWAITING[uid]
 
     # استقبال مدخلات قسم التكرار الذكي الجديد
-    if aw == "rep_set_chat":
+    if aw == "rep_chat":
         _update_user(uid, "rep_chat", text)
-        await message.answer(f"<b>تم تحديد الشات/القروب بنجاح! ✅</b>\nيوزر أو آيدي الهدف: <code>{text}</code>", parse_mode="HTML", reply_markup=kb_repeater(uid))
+        await message.answer(f"<b>تم تحديد الشات/القروب بنجاح! ✅</b>\nتم الحفظ وتحديث البيانات.\n\nشات الوجهة الحالي: <code>{text}</code>", parse_mode="HTML", reply_markup=kb_repeater(uid))
 
     elif aw == "rep_set_user":
         _update_user(uid, "rep_target_user", text)
-        await message.answer(f"<b>تم تحديد الشخص/البوت بنجاح! ✅</b>\nيوزر أو آيدي الهدف: <code>{text}</code>", parse_mode="HTML", reply_markup=kb_repeater(uid))
+        await message.answer(f"<b>تم تحديد الشخص/البوت بنجاح! ✅</b>\nتم الحفظ وتحديث البيانات.\n\nالشخص المراقب الحالي: <code>{text}</code>", parse_mode="HTML", reply_markup=kb_repeater(uid))
 
     # بقية إعدادات البوت الافتراضية
     elif aw == "add_msg":
@@ -286,11 +293,11 @@ async def cb_handler(cb: CallbackQuery):
 
     elif data == "rep_set_chat":
         AWAITING[uid] = "rep_chat"
-        await cb.message.edit_text("🎯 <b>أرسل آيدي (ID) أو يوزر الجروب أو الشات المراد النشر فيه:</b>\n(مثال: `@my_group` أو الآيدي المباشر)", parse_mode="HTML")
+        await cb.message.edit_text("🎯 <b>أرسل آيدي (ID) أو يوزر الجروب أو الشات المراد النشر فيه:</b>\n(مثال: `@my_group` أو الآيدي المباشر المبدأ بـ -100)", parse_mode="HTML")
 
     elif data == "rep_set_user":
-        AWAITING[uid] = "rep_target_user"
-        await cb.message.edit_text("👤 <b>أرسل آيدي (ID) أو يوزر الشخص أو البوت المراد مراقبته ونسخه:</b>\n(مثال: `@username` أو آيدي حسابه)", parse_mode="HTML")
+        AWAITING[uid] = "rep_set_user"
+        await cb.message.edit_text("👤 <b>أرسل آيدي (ID) أو يوزر الشخص أو البوت المراد مراقبته ونسخه:</b>\n(مثال: `@username` أو آيدي حسابه المباشر)", parse_mode="HTML")
 
     elif data == "rep_toggle":
         if cfg.get("rep_active"):
@@ -400,7 +407,7 @@ async def start_repeater_engine(uid: str):
                 if processed_text:
                     try:
                         async with tg.action(chat, "typing"):
-                            # إرسال عشوائي فوري ومفاجئ بين ثانيتين إلى ثلاث ثوانٍ كما طلبت بالملّي!
+                            # إرسال عشوائي فوري ومفاجئ بين ثانيتين إلى ثلاث ثوانٍ
                             await asyncio.sleep(random.uniform(2.0, 3.0))
                     except Exception:
                         await asyncio.sleep(2.5)
@@ -454,7 +461,7 @@ async def _send_loop(uid: str):
         ACTIVE_TASKS.pop(uid, None)
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  بوابة الـ API والويب الفاشون الشغالة لربط الحسابات الشخصية (القديمة المضمونة)
+#  بوابة الـ API والويب الفاشون الشغالة لربط الحسابات الشخصية
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def handle_login_page(req):
