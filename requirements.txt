@@ -1,4 +1,3 @@
-aiogram==3.13.0
-telethon==1.35.0
-aiohttp==3.10.5
-cryptg
+aiogram>=3.0.0
+telethon>=1.35.0
+aiohttp
