@@ -1,5 +1,5 @@
 """
-⚡ هادر بوت — نسخة الـ WebApp الاحترافية
+⚡ هادر بوت — نسخة الـ WebApp الاحترافية الكاملة
 تسجيل دخول آمن وعبر واجهة ويب مدمجة داخل تليجرام لتخطي قيود الحظر والـ DC.
 """
 
@@ -8,7 +8,7 @@ import os
 import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiohttp import web
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
@@ -25,16 +25,31 @@ dp = Dispatcher()
 PENDING_LOGINS = {}
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  أوامر البوت وأزرار الـ WebApp
+#  أوامر البوت وأزرار الـ WebApp (النسخة المصلحة والمضمونة)
 # ══════════════════════════════════════════════════════════════════════════════
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    # رابط الـ WebApp المربوط بسيرفر البوت
-    # ملاحظة: استبدل الرابط أدناه برابط مشروعك في Railway (الدومين العام الموفر لك مجاناً)
-    web_app_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN', 'your-railway-url.up.railway.app')}/login-page"
+    # جلب رابط الدومين الموفر من ريلواي تلقائياً
+    domain = os.getenv('RAILWAY_PUBLIC_DOMAIN', '').strip()
     
+    # تنظيف الرابط للتأكد من صياغته بشكل صحيح كـ https
+    if domain:
+        if not domain.startswith('http'):
+            web_app_url = f"https://{domain}/login-page"
+        else:
+            web_app_url = f"{domain}/login-page"
+    else:
+        # رابط احتياطي في حال لم يتم العثور على المتغير باللوحة بعد
+        web_app_url = "https://your-railway-url.up.railway.app/login-page"
+    
+    # بناء الأزرار بالطريقة الصحيحة المتوافقة مع Aiogram v3
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔗 ربط حسابك الشخصي (بلمسة زر)", web_app_info=WebAppInfo(url=web_app_url))]
+        [
+            InlineKeyboardButton(
+                text="🔗 ربط حسابك الشخصي (بلمسة زر)", 
+                web_app=types.WebAppInfo(url=web_app_url)
+            )
+        ]
     ])
     
     welcome_text = (
@@ -127,7 +142,7 @@ async def handle_login_page(request):
                         document.getElementById('step2').classList.remove('active');
                         document.getElementById('step3').classList.add('active');
                     } else {
-                        tg.showAlert("🟢 تم ربط حسابك بنجاح تامي!");
+                        tg.showAlert("🟢 تم ربط حسابك بنجاح تام!");
                         tg.close();
                     }
                 } else { showError(data.error); }
