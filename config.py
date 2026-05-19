@@ -5,7 +5,7 @@ BOT_TOKEN = "6547204382:AAEmjNE1BTNLL_RTkserbU9jpAcrQVRZJUg"
 SESSION_NAME = "hadar_new_session"
 
 # 4. الـ Telegram User ID الخاص بحسابك لإدارة البوت
-ADMIN_ID = 6432029959
+ADMIN_ID = 6636861893
 
 # 5. آيدي قروب التحكم (Control Chat)
-CONTROL_CHAT = 6432029959
+CONTROL_CHAT = 6636861893
