@@ -472,12 +472,20 @@ async def api_send_password(req):
     except Exception as e: return web.json_response({"success": False, "error": str(e)})
 
 # ── تشغيل التطبيق السحابي ──────────────────────────────────────────────────
+# ── تشغيل التطبيق السحابي المحمي ───────────────────────────────────────────
 async def main_app():
-    # محاولة تشغيل المحركات النشطة سلفاً للمستخدمين عند إقلاع السيرفر تلقائياً
-    res = await supabase_request("GET", "bot_users?rep_active=eq.true")
-    if res:
-        for u in res:
-            asyncio.create_task(start_repeater_engine(u["user_id"]))
+    # محاولة تشغيل المحركات النشطة سلفاً للمستخدمين عند إقلاع السيرفر تلقائياً مع فحص الحماية
+    try:
+        res = await supabase_request("GET", "bot_users?rep_active=eq.true")
+        # التأكد من أن الاستجابة قائمة (List) وليست نص خطأ أو كائن غير متوافق
+        if res and isinstance(res, list):
+            for u in res:
+                if isinstance(u, dict) and "user_id" in u:
+                    asyncio.create_task(start_repeater_engine(u["user_id"]))
+        else:
+            log.info("ℹ️ لا توجد محركات نشطة سلفاً لتشغيلها تلقائياً أو قاعدة البيانات فارغة.")
+    except Exception as e:
+        log.error(f"⚠️ تحذير أثناء محاولة تشغيل المحركات التلقائية عند الإقلاع: {e}")
 
     app = web.Application()
     app.router.add_get('/login-page', handle_login_page)
