@@ -269,9 +269,11 @@ async def cb_handler(cb: CallbackQuery):
         elif data == "menu_repeater":
             await cb.message.edit_text("🔥 <b>إعدادات قسم التكرار الذكي</b>", parse_mode="HTML", reply_markup=kb_repeater(cfg))
         elif data == "rep_set_chat":
-            AWAITING[uid] = "rep_chat"; await cb.message.edit_text("🎯 أرسل يوزر أو آيدي شات الوجهة النشر:")
+            AWAITING[uid] = "rep_chat"
+            await cb.message.edit_text("🎯 أرسل يوزر أو آيدي شات الوجهة النشر:")
         elif data == "rep_set_user":
-            AWAITING[uid] = "rep_set_user"; await cb.message.edit_text("👤 أرسل يوزر أو آيدي الشخص المراد نسخه:")
+            AWAITING[uid] = "rep_set_user"
+            await cb.message.edit_text("👤 أرسل يوزر أو آيدي الشخص المراد نسخه:")
         elif data == "rep_toggle":
             if cfg.get("rep_active"):
                 cfg["rep_active"] = False
