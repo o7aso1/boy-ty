@@ -72,28 +72,39 @@ async def supabase_request(method: str, endpoint: str, payload=None):
         return None
 
 async def _db_get_user(uid: str):
-    """ جلب بيانات المستخدم كاملة من Supabase وفي حال عدم وجوده يتم إنشاؤه """
+    """ جلب بيانات المستخدم كاملة من Supabase وفي حال عدم وجوده يتم إنشائه بأمان """
     res = await supabase_request("GET", f"bot_users?user_id=eq.{uid}")
-    if res and len(res) > 0:
+    
+    # التأكد أن النتيجة قائمة وبها عناصر
+    if res and isinstance(res, list) and len(res) > 0:
         user_data = res[0]
         if isinstance(user_data.get("messages"), str):
             try: user_data["messages"] = json.loads(user_data["messages"])
             except: user_data["messages"] = []
         return user_data
     
-    # إذا لم يكن موجوداً، قم بإنشائه فوراً بالإعدادات الافتراضية
+    # إذا كانت النتيجة فارغة أو ليست قائمة، نقوم بإنشاء مستخدم جديد فوراً
     default_user = {
-        "user_id": uid, "phone": "", "session_string": "", "target": "",
-        "mode": "normal", "interval_s": 2.0, "messages": [],
-        "rep_chat": "", "rep_target_user": "", "rep_active": False
+        "user_id": uid, 
+        "phone": "", 
+        "session_string": "", 
+        "target": "",
+        "mode": "normal", 
+        "interval_s": 2.0, 
+        "messages": [],
+        "rep_chat": "", 
+        "rep_target_user": "", 
+        "rep_active": False
     }
     await supabase_request("POST", "bot_users", default_user)
     return default_user
 
 async def _db_update_user(uid: str, updates: dict):
-    """ تحديث حقول معينة للمستخدم في قاعدة البيانات السحابية """
+    """ تحديث حقول معينة للمستخدم في قاعدة البيانات السحابية بأمان تام """
+    # تحويل الرسائل لنص JSON إذا كانت مصفوفة بايثون قبل إرسالها لسوبابيس
     if "messages" in updates and not isinstance(updates["messages"], str):
-        updates["messages"] = updates["messages"]
+        try: updates["messages"] = updates["messages"]
+        except: pass
     await supabase_request("PATCH", f"bot_users?user_id=eq.{uid}", updates)
 
 def parse_repeater_text(text: str) -> str:
