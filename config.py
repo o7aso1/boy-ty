@@ -1,13 +1,5 @@
-# ══════════════════════════════════════════════════════════
-#  ⚡ هادر بوت — الإعدادات الثابتة للسيرفر
-# ══════════════════════════════════════════════════════════
-
-# 1. بيانات الـ API الخاصة بحسابك (تأكد من مطابقتها تماماً لـ my.telegram.org)
-API_ID   = 24391216
-API_HASH = "b40d413dc508dbbe838f5f67a68393fa"
-
 # 2. توكن البوت الخاص بك من BotFather
-BOT_TOKEN = "7905187747:AAEvpRE2U8C94p9N3S6VqIic9rK7uO_jRDo"
+BOT_TOKEN = "6547204382:AAEmjNE1BTNLL_RTkserbU9jpAcrQVRZJUg"
 
 # 3. اسم الجلسة
 SESSION_NAME = "hadar_new_session"
@@ -16,4 +8,4 @@ SESSION_NAME = "hadar_new_session"
 ADMIN_ID = 6432029959
 
 # 5. آيدي قروب التحكم (Control Chat)
-CONTROL_CHAT = -1002492160176
+CONTROL_CHAT = 6432029959
