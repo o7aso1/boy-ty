@@ -31,9 +31,9 @@ log = logging.getLogger(__name__)
 bot = Bot(token=config.BOT_TOKEN)
 dp  = Dispatcher()
 
-# استخدام مكتبة aiohttp مدمجة للاتصال بـ Supabase بشكل متزامن وسريع
-SUPABASE_URL = getattr(config, "SUPABASE_URL", "").strip().rstrip('/')
-SUPABASE_KEY = getattr(config, "SUPABASE_KEY", "").strip()
+# قراءة المتغيرات من Railway أو ملف الإعدادات
+SUPABASE_URL = os.getenv("SUPABASE_URL", getattr(config, "SUPABASE_URL", "")).strip().rstrip('/')
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", getattr(config, "SUPABASE_KEY", "")).strip()
 
 # متغيرات لإدارة المهام في الذاكرة
 PENDING_LOGINS = {}
@@ -42,7 +42,7 @@ REPEATER_TASKS = {}   # uid -> TelegramClient
 AWAITING       = {}   # uid -> str
 
 # ══════════════════════════════════════════════════════════════════════════════
-# -- بوابات ومحركات الاتصال بـ Supabase
+# بوابات ومحركات الاتصال بـ Supabase
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def supabase_request(method: str, endpoint: str, payload=None):
@@ -85,26 +85,15 @@ async def _db_get_user(uid: str):
     
     # إذا كانت النتيجة فارغة أو ليست قائمة، نقوم بإنشاء مستخدم جديد فوراً
     default_user = {
-        "user_id": uid, 
-        "phone": "", 
-        "session_string": "", 
-        "target": "",
-        "mode": "normal", 
-        "interval_s": 2.0, 
-        "messages": [],
-        "rep_chat": "", 
-        "rep_target_user": "", 
-        "rep_active": False
+        "user_id": uid, "phone": "", "session_string": "", "target": "",
+        "mode": "normal", "interval_s": 2.0, "messages": [],
+        "rep_chat": "", "rep_target_user": "", "rep_active": False
     }
     await supabase_request("POST", "bot_users", default_user)
     return default_user
 
 async def _db_update_user(uid: str, updates: dict):
     """ تحديث حقول معينة للمستخدم في قاعدة البيانات السحابية بأمان تام """
-    # تحويل الرسائل لنص JSON إذا كانت مصفوفة بايثون قبل إرسالها لسوبابيس
-    if "messages" in updates and not isinstance(updates["messages"], str):
-        try: updates["messages"] = updates["messages"]
-        except: pass
     await supabase_request("PATCH", f"bot_users?user_id=eq.{uid}", updates)
 
 def parse_repeater_text(text: str) -> str:
@@ -168,11 +157,13 @@ async def _status_text(uid: str):
         f"• المستهدف الرئيسي: <code>{cfg['target'] or 'لم يحدد'}</code>\n"
         f"• الفاصل الحالي: <code>{cfg['interval_s']}s</code>\n"
         f"• الرسائل المخزنة: <code>{len(cfg.get('messages', []))}</code> رسالة\n"
+        f"• شات التكرار: <code>{cfg.get('rep_chat') or 'لم يحدد'}</code>\n"
+        f"• الشخص المنسوخ: <code>{cfg.get('rep_target_user') or 'لم يحدد'}</code>\n"
         f"• التكرار الذكي: <b>{'🟢 نشط' if cfg.get('rep_active') else '🔴 متوقف'}</b>"
     )
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  معالجة الرسائل والمدخلات
+#  معالجة الرسائل والمدخلات (معدلة للحفاظ على البيانات السحابية)
 # ══════════════════════════════════════════════════════════════════════════════
 
 @dp.message(Command("start"))
@@ -195,37 +186,40 @@ async def handle_text(message: Message):
     
     text = message.text.strip()
     del AWAITING[uid]
+    
+    # جلب البيانات الحالية بالكامل قبل التحديث لعدم تصفير بقية الحقول
     cfg = await _db_get_user(uid)
 
     if aw == "rep_chat":
-        await _db_update_user(uid, {"rep_chat": text})
         cfg["rep_chat"] = text
-        await message.answer("✅ تم حفظ شات الوجهة سحابياً.", reply_markup=kb_repeater(cfg))
+        await _db_update_user(uid, cfg)
+        await message.answer("✅ تم حفظ شات الوجهة سحابياً بنجاح.", reply_markup=kb_repeater(cfg))
     elif aw == "rep_set_user":
-        await _db_update_user(uid, {"rep_target_user": text})
         cfg["rep_target_user"] = text
-        await message.answer("✅ تم حفظ الشخص المستهدف سحابياً.", reply_markup=kb_repeater(cfg))
+        await _db_update_user(uid, cfg)
+        await message.answer("✅ تم حفظ الشخص المستهدف سحابياً بنجاح.", reply_markup=kb_repeater(cfg))
     elif aw == "add_msg":
         m = re.match(r"^(\d+)\s*\|\s*(.+)$", text, re.DOTALL)
         repeat, msg_text = (int(m.group(1)), m.group(2).strip()) if m else (1, text)
         msgs = cfg.get("messages", [])
         msgs.append({"text": msg_text, "repeat": repeat})
-        await _db_update_user(uid, {"messages": msgs})
+        cfg["messages"] = msgs
+        await _db_update_user(uid, cfg)
         await message.answer("✅ تم إضافة الرسالة وحفظها في سوبابيس.", reply_markup=kb_msgs())
     elif aw == "set_target":
-        await _db_update_user(uid, {"target": text})
         cfg["target"] = text
-        await message.answer("✅ تم تحديث المستهدف.", reply_markup=kb_settings(cfg))
+        await _db_update_user(uid, cfg)
+        await message.answer("✅ تم تحديث المستهدف الرئيسي.", reply_markup=kb_settings(cfg))
     elif aw == "set_interval":
         try:
             s = float(text)
-            await _db_update_user(uid, {"interval_s": s})
             cfg["interval_s"] = s
+            await _db_update_user(uid, cfg)
             await message.answer(f"✅ الفاصل أصبح {s} ثانية.", reply_markup=kb_settings(cfg))
         except: await message.answer("❌ قيمة خاطئة.")
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  الأزرار التفاعلية وقسم التكرار السحابي الآمن كلياً
+#  الأزرار التفاعلية وقسم التكرار المحمي
 # ══════════════════════════════════════════════════════════════════════════════
 
 @dp.callback_query()
@@ -235,54 +229,58 @@ async def cb_handler(cb: CallbackQuery):
     await cb.answer()
     cfg = await _db_get_user(uid)
 
-    if data == "main_menu":
-        await cb.message.edit_text(await _status_text(uid), parse_mode="HTML", reply_markup=kb_main(uid))
-    elif data == "menu_repeater":
-        await cb.message.edit_text("🔥 <b>إعدادات قسم التكرار الذكي</b>", parse_mode="HTML", reply_markup=kb_repeater(cfg))
-    elif data == "rep_set_chat":
-        AWAITING[uid] = "rep_chat"; await cb.message.edit_text("🎯 أرسل يوزر أو آيدي شات الوجهة النشر:")
-    elif data == "rep_set_user":
-        AWAITING[uid] = "rep_set_user"; await cb.message.edit_text("👤 أرسل يوزر أو آيدي الشخص المراد نسخه:")
-    elif data == "rep_toggle":
-        if cfg.get("rep_active"):
-            await _db_update_user(uid, {"rep_active": False})
-            if uid in REPEATER_TASKS:
-                try: await REPEATER_TASKS[uid].disconnect()
-                except: pass
-                REPEATER_TASKS.pop(uid, None)
-            cfg["rep_active"] = False
-            await cb.message.edit_text("🛑 تم إيقاف محرك التكرار بنجاح.", reply_markup=kb_repeater(cfg))
-        else:
-            if not cfg.get("rep_chat") or not cfg.get("rep_target_user"):
-                await bot.send_message(int(uid), "❌ حدد الشات والشخص أولاً.")
-                return
-            await _db_update_user(uid, {"rep_active": True})
-            asyncio.create_task(start_repeater_engine(uid))
-            cfg["rep_active"] = True
-            await cb.message.edit_text("🟢 تم تشغيل المحرك السحابي بنجاح بنمط الذاكرة والمزامنة!", reply_markup=kb_repeater(cfg))
-    elif data == "toggle_send":
-        if uid in ACTIVE_TASKS:
-            ACTIVE_TASKS[uid].cancel(); ACTIVE_TASKS.pop(uid, None)
-            await cb.message.edit_text("⏹ تم إيقاف الإرسال التلقائي.", reply_markup=kb_main(uid))
-        else:
-            if not cfg["target"] or not cfg.get("messages"):
-                await bot.send_message(int(uid), "❌ اضبط المستهدف والرسائل أولاً.")
-                return
-            ACTIVE_TASKS[uid] = asyncio.create_task(_send_loop(uid))
-            await cb.message.edit_text("▶️ بدأ الإرسال التلقائي المستمر من السحاب!", reply_markup=kb_main(uid))
-    elif data == "menu_msgs":
-        await cb.message.edit_text("📋 إدارة الرسائل المحفوظة سحابياً", reply_markup=kb_msgs())
-    elif data == "list_msgs":
-        msgs = cfg.get("messages", [])
-        if not msgs: await cb.message.edit_text("🫙 لا توجد رسائل.", reply_markup=kb_msgs()); return
-        out = "<b>📜 رسائلك في السحاب:</b>\n\n"
-        for i, m in enumerate(msgs, 1): out += f"{i}. {m.get('text')} (×{m.get('repeat', 1)})\n"
-        await cb.message.edit_text(out, parse_mode="HTML", reply_markup=kb_msgs())
-    elif data == "clear_msgs":
-        await _db_update_user(uid, {"messages": []})
-        await cb.message.edit_text("🗑 تم تفريغ الرسائل بنجاح.", reply_markup=kb_msgs())
-    elif data == "menu_settings":
-        await cb.message.edit_text("⚙️ الإعدادات", reply_markup=kb_settings(cfg))
+    try:
+        if data == "main_menu":
+            await cb.message.edit_text(await _status_text(uid), parse_mode="HTML", reply_markup=kb_main(uid))
+        elif data == "menu_repeater":
+            await cb.message.edit_text("🔥 <b>إعدادات قسم التكرار الذكي</b>", parse_mode="HTML", reply_markup=kb_repeater(cfg))
+        elif data == "rep_set_chat":
+            AWAITING[uid] = "rep_chat"; await cb.message.edit_text("🎯 أرسل يوزر أو آيدي شات الوجهة النشر:")
+        elif data == "rep_set_user":
+            AWAITING[uid] = "rep_set_user"; await cb.message.edit_text("👤 أرسل يوزر أو آيدي الشخص المراد نسخه:")
+        elif data == "rep_toggle":
+            if cfg.get("rep_active"):
+                cfg["rep_active"] = False
+                await _db_update_user(uid, cfg)
+                if uid in REPEATER_TASKS:
+                    try: await REPEATER_TASKS[uid].disconnect()
+                    except: pass
+                    REPEATER_TASKS.pop(uid, None)
+                await cb.message.edit_text("🛑 تم إيقاف محرك التكرار بنجاح.", reply_markup=kb_repeater(cfg))
+            else:
+                if not cfg.get("rep_chat") or not cfg.get("rep_target_user"):
+                    await bot.send_message(int(uid), "❌ حدد الشات والشخص أولاً.")
+                    return
+                cfg["rep_active"] = True
+                await _db_update_user(uid, cfg)
+                asyncio.create_task(start_repeater_engine(uid))
+                await cb.message.edit_text("🟢 تم تشغيل المحرك السحابي بنجاح بنمط الذاكرة والمزامنة!", reply_markup=kb_repeater(cfg))
+        elif data == "toggle_send":
+            if uid in ACTIVE_TASKS:
+                ACTIVE_TASKS[uid].cancel(); ACTIVE_TASKS.pop(uid, None)
+                await cb.message.edit_text("⏹ تم إيقاف الإرسال التلقائي.", reply_markup=kb_main(uid))
+            else:
+                if not cfg["target"] or not cfg.get("messages"):
+                    await bot.send_message(int(uid), "❌ اضبط المستهدف والرسائل أولاً.")
+                    return
+                ACTIVE_TASKS[uid] = asyncio.create_task(_send_loop(uid))
+                await cb.message.edit_text("▶️ بدأ الإرسال التلقائي المستمر من السحاب!", reply_markup=kb_main(uid))
+        elif data == "menu_msgs":
+            await cb.message.edit_text("📋 إدارة الرسائل المحفوظة سحابياً", reply_markup=kb_msgs())
+        elif data == "list_msgs":
+            msgs = cfg.get("messages", [])
+            if not msgs: await cb.message.edit_text("🫙 لا توجد رسائل.", reply_markup=kb_msgs()); return
+            out = "<b>📜 رسائلك في السحاب:</b>\n\n"
+            for i, m in enumerate(msgs, 1): out += f"{i}. {m.get('text')} (×{m.get('repeat', 1)})\n"
+            await cb.message.edit_text(out, parse_mode="HTML", reply_markup=kb_msgs())
+        elif data == "clear_msgs":
+            cfg["messages"] = []
+            await _db_update_user(uid, cfg)
+            await cb.message.edit_text("🗑 تم تفريغ الرسائل بنجاح.", reply_markup=kb_msgs())
+        elif data == "menu_settings":
+            await cb.message.edit_text("⚙️ الإعدادات", reply_markup=kb_settings(cfg))
+    except Exception as e:
+        log.debug(f"Ignored UI update notification: {e}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  محركات التشغيل المستقرة كلياً بدون أي استخدام للملفات المحلية
@@ -298,7 +296,6 @@ async def start_repeater_engine(uid: str):
     sess_str = cfg.get("session_string")
     if not sess_str: return
 
-    # تشغيل الجلسة مباشرة من نص السلسلة السحابي دون فتح أي ملف محلي
     tg = TelegramClient(StringSession(sess_str), config.API_ID, config.API_HASH, timeout=30)
     try: await tg.connect()
     except Exception as e:
@@ -363,7 +360,7 @@ async def _send_loop(uid: str):
         ACTIVE_TASKS.pop(uid, None)
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  واجهات الويب لربط الحسابات واستخراج الـ String Session وحفظها سحابياً
+#  واجهات الويب لربط الحسابات واستخراج الـ String Session
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def handle_login_page(req):
@@ -431,7 +428,6 @@ async def api_send_phone(req):
         uid = str(d.get("user_id"))
         phone = d.get("phone","").strip()
         
-        # نستخدم StringSession فارغ في الذاكرة تماماً لاستخراج النص فقط
         tg = TelegramClient(StringSession(), config.API_ID, config.API_HASH, timeout=20)
         await tg.connect()
         sent = await tg.send_code_request(phone)
@@ -450,11 +446,14 @@ async def api_send_code(req):
         tg = item["client"]
         try:
             await tg.sign_in(phone=item["phone"], code=code, phone_code_hash=item["phone_code_hash"])
-            # استخراج النص السحري وحفظه في سوبابيس فوراً
             string_session_text = tg.session.save()
             await tg.disconnect()
             
-            await _db_update_user(uid, {"phone": item["phone"], "session_string": string_session_text})
+            cfg = await _db_get_user(uid)
+            cfg["phone"] = item["phone"]
+            cfg["session_string"] = string_session_text
+            await _db_update_user(uid, cfg)
+            
             del PENDING_LOGINS[uid]
             
             try: await bot.send_message(int(uid), "🟢 <b>تم حفظ حسابك وإعداداتك سحابياً في Supabase بنجاح! لن تحتاج للتسجيل مجدداً.</b>", parse_mode="HTML", reply_markup=kb_main(uid))
@@ -475,20 +474,21 @@ async def api_send_password(req):
         string_session_text = tg.session.save()
         await tg.disconnect()
         
-        await _db_update_user(uid, {"phone": item["phone"], "session_string": string_session_text})
+        cfg = await _db_get_user(uid)
+        cfg["phone"] = item["phone"]
+        cfg["session_string"] = string_session_text
+        await _db_update_user(uid, cfg)
+        
         del PENDING_LOGINS[uid]
         try: await bot.send_message(int(uid), "🟢 <b>تم الربط بنجاح!</b>", parse_mode="HTML", reply_markup=kb_main(uid))
         except: pass
         return web.json_response({"success": True})
     except Exception as e: return web.json_response({"success": False, "error": str(e)})
 
-# ── تشغيل التطبيق السحابي ──────────────────────────────────────────────────
 # ── تشغيل التطبيق السحابي المحمي ───────────────────────────────────────────
 async def main_app():
-    # محاولة تشغيل المحركات النشطة سلفاً للمستخدمين عند إقلاع السيرفر تلقائياً مع فحص الحماية
     try:
         res = await supabase_request("GET", "bot_users?rep_active=eq.true")
-        # التأكد من أن الاستجابة قائمة (List) وليست نص خطأ أو كائن غير متوافق
         if res and isinstance(res, list):
             for u in res:
                 if isinstance(u, dict) and "user_id" in u:
