@@ -1,9 +1,15 @@
 """
-⚡ هادر بوت — النسخة الاحترافية المستقرة بالكامل
-متعدد المستخدمين + أزرار تفاعلية + حفظ دائم + حل مشكلة قفل قاعدة البيانات (Database Locked)
+⚡ هادر بوت — النسخة الاحترافية الكاملة والمستقرة
+متعدد المستخدمين + أزرار تفاعلية + حفظ دائم + حل جذري لقفل قاعدة البيانات (WAL Mode)
 """
 
-import asyncio, json, os, random, logging, re
+import asyncio
+import json
+import os
+import random
+import logging
+import re
+import sqlite3  # تم الاستدعاء هنا لتطبيق وضع WAL مباشرة
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import (
@@ -40,6 +46,26 @@ GUARD_TASKS    = {}   # uid -> asyncio.Task
 REPEATER_TASKS = {}   # uid -> TelegramClient (العميل النشط لقسم التكرار)
 PAUSED         = set()
 AWAITING       = {}   # uid -> str (ما ننتظره من المستخدم)
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  تهيئة تفعيل وضع WAL لمنع قفل قاعدة البيانات نهائياً
+# ══════════════════════════════════════════════════════════════════════════════
+
+def optimize_db(session_name_path):
+    """ تفعيل ميزة WAL لـ SQLite لفتح القراءة والكتابة المتزامنة بدون أقفال """
+    try:
+        # التأكد من امتداد الملف
+        path = session_name_path if session_name_path.endswith(".session") else f"{session_name_path}.session"
+        if os.path.exists(path):
+            conn = sqlite3.connect(path)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA busy_timeout=10000;")  # الانتظار حتى 10 ثوان كاملة عند الانشغال
+            conn.commit()
+            conn.close()
+            log.info(f"⚙️ [DB Optimization] تم تطبيق وضع WAL و busy_timeout على: {path}")
+    except Exception as e:
+        log.warning(f"⚠️ [DB Optimization] تحذير أثناء تهيئة الجلسة: {e}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  الحفظ الدائم والبيانات
@@ -97,7 +123,6 @@ def _update_user(uid: str, key: str, val):
     data[uid][key] = val
     _save_data(data)
 
-# ── تفكيك ومعالجة النص الذكي لقسم التكرار ─────────────────────────────────────
 def parse_repeater_text(text: str) -> str:
     text = text.strip()
     # الحالة الأولى: تكرار الأقواس الذكي مثل: احمد(3) كلب(5)
@@ -110,7 +135,7 @@ def parse_repeater_text(text: str) -> str:
             result_parts.extend([word] * int(count))
         return " ".join(result_parts)
     
-    # الحالة الثانية: وجود الفواصل العربية أو الانجليزية مثل: احمد ، يلعب ، الو
+    # الحالة الثانية: وجود الفواصل العربية أو الانجليزية
     if "،" in text or "," in text:
         parts = re.split(r"[،,]+", text)
         result_parts = [p.strip() for p in parts if p.strip()]
@@ -119,7 +144,7 @@ def parse_repeater_text(text: str) -> str:
     return text
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  لوحة المفاتيح والتحكم (Keyboards)
+#  لوحات التحكم والأزرار (Keyboards)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def kb_main(uid: str):
@@ -195,7 +220,7 @@ def _status_text(uid: str):
     )
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  الأوامر النصية وتصحيح استقبال المدخلات
+#  الأوامر النصية واستقبال المدخلات
 # ══════════════════════════════════════════════════════════════════════════════
 
 @dp.message(Command("start"))
@@ -351,46 +376,78 @@ async def cb_handler(cb: CallbackQuery):
         await cb.message.edit_text("⏱ أرسل الفاصل بالثواني (مثال: 2):")
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  المحرك الجديد: مع إصلاح قفل الجلسة واستقرار الـ SQLite
+#  المحرك المطور المحصن ضد الـ Database Locked
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def start_repeater_engine(uid: str):
-    # مهلة بسيطة ثانية واحدة تضمن تحرر الملف من الويب سيرفر
-    await asyncio.sleep(1.0)
+    # 1. إغلاق وتنظيف أي مهام أو اتصالات قديمة معلقة لنفس المستخدم فوراً منعاً للتصادم
+    if uid in REPEATER_TASKS:
+        log.info(f"♻️ جاري تنظيف وإغلاق محرك التكرار القديم للمستخدم {uid}...")
+        try:
+            await REPEATER_TASKS[uid].disconnect()
+        except Exception: 
+            pass
+        REPEATER_TASKS.pop(uid, None)
+
+    # مهلة أمان بسيطة ليتنفس السيرفر وينغلق الملف بالكامل من الويب
+    await asyncio.sleep(1.5)
     
-    session_path = f"{SESSIONS_DIR}/user_{uid}"
+    session_name_path = f"{SESSIONS_DIR}/user_{uid}"
     
-    # تمرير معاملات لتجنب قفل قاعدة البيانات بشكل فوري وللسماح بالانتظار (Timeout)
+    # 2. تطبيق وضع WAL و busy_timeout برمجياً على ملف قاعدة البيانات مباشرة
+    optimize_db(session_name_path)
+
+    # 3. إنشاء كائن اتصال Telethon بمعاملات مهلة مرنة وانتظار ذكي
     tg = TelegramClient(
-        session_path, 
+        session_name_path, 
         config.API_ID, 
         config.API_HASH,
         connection_retries=5,
-        timeout=15
+        timeout=20
     )
     
+    # محاولة الاتصال بمرونة واستقرار
     try:
         await tg.connect()
+    except sqlite3.OperationalError:
+        log.warning("⚠️ الجلسة مقفلة مؤقتاً، انتظر 3 ثوانٍ للمحاولة الأخيرة...")
+        await asyncio.sleep(3.0)
+        try:
+            await tg.connect()
+        except Exception as e:
+            log.error(f"❌ تعذر فك قفل الجلسة برمجياً: {e}")
+            _update_user(uid, "rep_active", False)
+            return
     except Exception as e:
-        log.error(f"⚠️ فشل الاتصال الأولي بسبب انشغال الجلسة، جاري إعادة المحاولة خلال ثانيتين: {e}")
-        await asyncio.sleep(2.0)
-        await tg.connect()
-    
+        log.error(f"❌ فشل اتصال المحرك: {e}")
+        _update_user(uid, "rep_active", False)
+        return
+
     if not await tg.is_user_authorized():
+        log.warning(f"👤 الحساب {uid} غير مسجل أو انتهت صلاحية جلسته.")
         _update_user(uid, "rep_active", False)
         await tg.disconnect()
         return
 
+    # تثبيت الكلاينت الجديد والنشط في الذاكرة
     REPEATER_TASKS[uid] = tg
-    log.info(f"🔥 [Repeater Engine] بدأ تشغيل محرك النسخ للحساب المستقر: {uid}")
+    log.info(f"🔥 [Repeater Engine] بدأ تشغيل محرك النسخ المستقر والمحصن للحساب: {uid}")
     
-    me = await tg.get_me()
-    my_id = str(me.id)
-    my_user = (me.username or "").lower()
+    # جلب معلومات الحساب بأمان تام بعد وضع الـ WAL والـ Timeout
+    try:
+        me = await tg.get_me()
+        my_id = str(me.id)
+        my_user = (me.username or "").lower()
+    except sqlite3.OperationalError as e:
+        log.error(f"❌ قفل SQLite منع جلب معلومات الحساب، جاري الإغلاق التلقائي كإجراء حماية: {e}")
+        _update_user(uid, "rep_active", False)
+        await tg.disconnect()
+        REPEATER_TASKS.pop(uid, None)
+        return
 
     cfg = _get_user(uid)
-    target_user = cfg.get("rep_target_user").strip().replace("@", "")
-    target_chat = cfg.get("rep_chat").strip()
+    target_user = cfg.get("rep_target_user", "").strip().replace("@", "")
+    target_chat = cfg.get("rep_chat", "").strip()
 
     @tg.on(events.NewMessage)
     async def handler(event):
@@ -428,9 +485,9 @@ async def start_repeater_engine(uid: str):
                 if processed_text:
                     try:
                         async with tg.action(chat, "typing"):
-                            await asyncio.sleep(random.uniform(1.5, 2.5))
+                            await asyncio.sleep(random.uniform(1.2, 2.2))
                     except Exception:
-                        await asyncio.sleep(2.0)
+                        await asyncio.sleep(1.5)
 
                     await tg.send_message(chat, processed_text)
                     log.info(f"📬 [Repeater] تم النسخ والتكرار بنجاح: {processed_text}")
@@ -445,12 +502,14 @@ async def start_repeater_engine(uid: str):
         REPEATER_TASKS.pop(uid, None)
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  المحرك القديم المستمر للإرسال التلقائي المستمر للرسائل العادية
+#  المحرك القديم المستمر للإرسال التلقائي للرسائل العادية
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def _send_loop(uid: str):
-    session_path = f"{SESSIONS_DIR}/user_{uid}"
-    tg = TelegramClient(session_path, config.API_ID, config.API_HASH, timeout=15)
+    session_name_path = f"{SESSIONS_DIR}/user_{uid}"
+    optimize_db(session_name_path)  # تطبيق وضع WAL هنا أيضاً للأمان
+    
+    tg = TelegramClient(session_name_path, config.API_ID, config.API_HASH, timeout=20)
     await tg.connect()
     if not await tg.is_user_authorized():
         await tg.disconnect()
@@ -481,7 +540,7 @@ async def _send_loop(uid: str):
         ACTIVE_TASKS.pop(uid, None)
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  بوابة الـ API والويب الفاشون الشغالة لربط الحسابات الشخصية
+#  بوابات الـ API والويب المستقرة والمحسنة لربط الحسابات الشخصية
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def handle_login_page(req):
@@ -573,7 +632,11 @@ async def api_send_phone(req):
         d = await req.json()
         uid = str(d.get("user_id"))
         phone = d.get("phone","").strip()
-        tg = TelegramClient(f"{SESSIONS_DIR}/user_{uid}", config.API_ID, config.API_HASH, timeout=15)
+        
+        session_name_path = f"{SESSIONS_DIR}/user_{uid}"
+        optimize_db(session_name_path)  # تفعيل وضع WAL قبل فتح الاتصال من الويب
+        
+        tg = TelegramClient(session_name_path, config.API_ID, config.API_HASH, timeout=20)
         await tg.connect()
         sent = await tg.send_code_request(phone)
         PENDING_LOGINS[uid] = {"client": tg, "phone": phone, "phone_code_hash": sent.phone_code_hash}
