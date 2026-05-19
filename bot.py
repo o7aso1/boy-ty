@@ -216,7 +216,9 @@ async def handle_text(message: Message):
             cfg["interval_s"] = s
             await _db_update_user(uid, cfg)
             await message.answer(f"✅ الفاصل أصبح {s} ثانية.", reply_markup=kb_settings(cfg))
-        except: await message.answer("❌ قيمة خاطئة.")
+        except Exception as e: 
+            log.error(f"Error setting interval: {e}")
+            await message.answer("❌ قيمة خاطئة.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  الأزرار التفاعلية وقسم التكرار المحمي
@@ -244,7 +246,7 @@ async def cb_handler(cb: CallbackQuery):
                 await _db_update_user(uid, cfg)
                 if uid in REPEATER_TASKS:
                     try: await REPEATER_TASKS[uid].disconnect()
-                    except: pass
+                    except Exception as e: log.error(f"Error disconnecting repeater: {e}")
                     REPEATER_TASKS.pop(uid, None)
                 await cb.message.edit_text("🛑 تم إيقاف محرك التكرار بنجاح.", reply_markup=kb_repeater(cfg))
             else:
@@ -289,7 +291,7 @@ async def cb_handler(cb: CallbackQuery):
 async def start_repeater_engine(uid: str):
     if uid in REPEATER_TASKS:
         try: await REPEATER_TASKS[uid].disconnect()
-        except: pass
+        except Exception as e: log.error(f"Error disconnecting previous repeater: {e}")
         REPEATER_TASKS.pop(uid, None)
 
     cfg = await _db_get_user(uid)
@@ -330,7 +332,9 @@ async def start_repeater_engine(uid: str):
             if user_match and chat_match and event.text:
                 proc = parse_repeater_text(event.text)
                 if proc: await tg.send_message(chat, proc)
-        except: pass
+        except Exception as e:
+            log.error(f"Error in repeater handler: {e}")
+            pass
 
     try: await tg.run_until_disconnected()
     finally: REPEATER_TASKS.pop(uid, None)
@@ -353,7 +357,9 @@ async def _send_loop(uid: str):
                 if uid not in ACTIVE_TASKS: break
                 try: await tg.send_message(target, msg_item.get("text", ""))
                 except FloodWaitError as e: await asyncio.sleep(e.seconds + 2)
-                except: pass
+                except Exception as e: 
+                    log.error(f"Error sending message: {e}")
+                    pass
                 await asyncio.sleep(float(cfg.get("interval_s", 2)))
     finally:
         await tg.disconnect()
@@ -433,7 +439,9 @@ async def api_send_phone(req):
         sent = await tg.send_code_request(phone)
         PENDING_LOGINS[uid] = {"client": tg, "phone": phone, "phone_code_hash": sent.phone_code_hash}
         return web.json_response({"success": True})
-    except Exception as e: return web.json_response({"success": False, "error": str(e)})
+    except Exception as e: 
+        log.error(f"Error in api_send_phone: {e}")
+        return web.json_response({"success": False, "error": str(e)})
 
 async def api_send_code(req):
     try:
@@ -457,10 +465,12 @@ async def api_send_code(req):
             del PENDING_LOGINS[uid]
             
             try: await bot.send_message(int(uid), "🟢 <b>تم حفظ حسابك وإعداداتك سحابياً في Supabase بنجاح! لن تحتاج للتسجيل مجدداً.</b>", parse_mode="HTML", reply_markup=kb_main(uid))
-            except: pass
+            except Exception as e: log.error(f"Error sending success message: {e}")
             return web.json_response({"success": True})
         except SessionPasswordNeededError: return web.json_response({"success": False, "error": "PASSWORD_NEEDED"})
-    except Exception as e: return web.json_response({"success": False, "error": str(e)})
+    except Exception as e: 
+        log.error(f"Error in api_send_code: {e}")
+        return web.json_response({"success": False, "error": str(e)})
 
 async def api_send_password(req):
     try:
@@ -481,9 +491,11 @@ async def api_send_password(req):
         
         del PENDING_LOGINS[uid]
         try: await bot.send_message(int(uid), "🟢 <b>تم الربط بنجاح!</b>", parse_mode="HTML", reply_markup=kb_main(uid))
-        except: pass
+        except Exception as e: log.error(f"Error sending success message: {e}")
         return web.json_response({"success": True})
-    except Exception as e: return web.json_response({"success": False, "error": str(e)})
+    except Exception as e: 
+        log.error(f"Error in api_send_password: {e}")
+        return web.json_response({"success": False, "error": str(e)})
 
 # ── تشغيل التطبيق السحابي المحمي ───────────────────────────────────────────
 async def main_app():
