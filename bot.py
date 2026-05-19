@@ -9,7 +9,6 @@ import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-from aiogram.utils.web_app import safe_parse_webapp_data
 from aiohttp import web
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
