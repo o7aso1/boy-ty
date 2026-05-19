@@ -195,7 +195,7 @@ def _status_text(uid: str):
     )
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  الأوامر النصية وتصحيح استقبال المدخلات لقسم التكرار (Handler)
+#  الأوامر النصية وتصحيح استقبال المدخلات
 # ══════════════════════════════════════════════════════════════════════════════
 
 @dp.message(Command("start"))
@@ -223,32 +223,27 @@ async def cmd_menu(message: Message):
     uid = str(message.from_user.id)
     await message.answer(_status_text(uid), parse_mode="HTML", reply_markup=kb_main(uid))
 
-# إزالة فلترة النفي لتجنب ضياع المدخلات التي تبدأ بـ @ أو -
 @dp.message(F.text)
 async def handle_text(message: Message):
     uid = str(message.from_user.id)
     aw = AWAITING.get(uid)
     
-    # إذا لم نكن ننتظر شيء وكان نصاً عادياً يبدأ بـ / نتركه للأوامر
     if not aw and message.text.startswith("/"): 
         return
 
     text = message.text.strip()
-    
-    if not aw:
-        return
+    if not aw: return
 
-    # حذف الحالة فوراً لمنع التكرار
     del AWAITING[uid]
 
-    # استقبال مدخلات قسم التكرار الذكي الجديد
+    # استقبال مدخلات قسم التكرار الذكي الجديد (تم إصلاح المسميات لتطابق الزر)
     if aw == "rep_chat":
         _update_user(uid, "rep_chat", text)
-        await message.answer(f"<b>تم تحديد الشات/القروب بنجاح! ✅</b>\nتم الحفظ وتحديث البيانات.\n\nشات الوجهة الحالي: <code>{text}</code>", parse_mode="HTML", reply_markup=kb_repeater(uid))
+        await message.answer(f"<b>تم تحديد الشات/القروب بنجاح! ✅</b>\n\nشات الوجهة الحالي: <code>{text}</code>", parse_mode="HTML", reply_markup=kb_repeater(uid))
 
     elif aw == "rep_set_user":
         _update_user(uid, "rep_target_user", text)
-        await message.answer(f"<b>تم تحديد الشخص/البوت بنجاح! ✅</b>\nتم الحفظ وتحديث البيانات.\n\nالشخص المراقب الحالي: <code>{text}</code>", parse_mode="HTML", reply_markup=kb_repeater(uid))
+        await message.answer(f"<b>تم تحديد الشخص/البوت بنجاح! ✅</b>\n\nالشخص المراقب الحالي: <code>{text}</code>", parse_mode="HTML", reply_markup=kb_repeater(uid))
 
     # بقية إعدادات البوت الافتراضية
     elif aw == "add_msg":
@@ -287,7 +282,6 @@ async def cb_handler(cb: CallbackQuery):
     if data == "main_menu":
         await cb.message.edit_text(_status_text(uid), parse_mode="HTML", reply_markup=kb_main(uid))
 
-    # أزرار قسم التكرار الذكي الجديد
     elif data == "menu_repeater":
         await cb.message.edit_text("🔥 <b>مرحباً بك في قسم التكرار والنسخ الذكي للجروبات والشات</b>\n\nاضبط الإعدادات أدناه وشغل المحرك التلقائي فوراً:", parse_mode="HTML", reply_markup=kb_repeater(uid))
 
@@ -317,7 +311,6 @@ async def cb_handler(cb: CallbackQuery):
             asyncio.create_task(start_repeater_engine(uid))
             await cb.message.edit_text("▶️ <b>تم بدء تشغيل قسم التكرار بنجاح!</b>\nجاري مراقبة الشخص المستهدف في الخلفية وصيد الكلمات...", parse_mode="HTML", reply_markup=kb_repeater(uid))
 
-    # أزرار التحكم التقليدية للبوت
     elif data == "toggle_send":
         if uid in ACTIVE_TASKS:
             ACTIVE_TASKS[uid].cancel()
@@ -376,6 +369,11 @@ async def start_repeater_engine(uid: str):
     REPEATER_TASKS[uid] = tg
     log.info(f"🔥 [Repeater Engine] بدأ تشغيل محرك النسخ للحساب: {uid}")
     
+    # جلب معلومات الحساب المربوط لمنع تكرار رسائله لنفسه بالخطأ ولتسهيل فحص التقييم الذاتي
+    me = await tg.get_me()
+    my_id = str(me.id)
+    my_user = (me.username or "").lower()
+
     cfg = _get_user(uid)
     target_user = cfg.get("rep_target_user").strip().replace("@", "")
     target_chat = cfg.get("rep_chat").strip()
@@ -390,13 +388,26 @@ async def start_repeater_engine(uid: str):
             sender = await event.get_sender()
             sender_id = str(sender.id) if sender else ""
             sender_user = getattr(sender, 'username', '') or ''
+            sender_user = sender_user.lower()
             
+            # حماية لمنع البوت من نسخ رسالته المكررة والدخول في حلقة لانهائية (تعمل فقط لو أرسل البوت نفسه التكرار)
+            if event.out and sender_id == my_id:
+                # إذا كانت الرسالة خارجة من البوت نفسه كنسخ، نتجاهلها
+                return
+
             chat = await event.get_chat()
             chat_id = str(chat.id) if chat else ""
             chat_user = getattr(chat, 'username', '') or ''
+            chat_user = chat_user.lower()
             
-            user_match = (target_user == sender_id or target_user.lower() == sender_user.lower())
-            chat_match = (target_chat in chat_id or target_chat.lower() == chat_user.lower() or target_chat.replace("-100", "") in chat_id)
+            # التحقق من المطابقة: لو كنت تختبر بنفسك، أو لو أرسل الشخص المستهدف فعلاً
+            user_match = (target_user == sender_id or target_user.lower() == sender_user or (target_user == "self" and sender_id == my_id))
+            
+            # إذا وضعت يوزرك الشخصي لتجربة التكرار الذاتي
+            if target_user.lower() == my_user or target_user == my_id:
+                user_match = (sender_id == my_id)
+
+            chat_match = (target_chat in chat_id or target_chat.lower() == chat_user or target_chat.replace("-100", "") in chat_id)
 
             if user_match and chat_match and event.text:
                 raw_text = event.text
@@ -407,7 +418,6 @@ async def start_repeater_engine(uid: str):
                 if processed_text:
                     try:
                         async with tg.action(chat, "typing"):
-                            # إرسال عشوائي فوري ومفاجئ بين ثانيتين إلى ثلاث ثوانٍ
                             await asyncio.sleep(random.uniform(2.0, 3.0))
                     except Exception:
                         await asyncio.sleep(2.5)
