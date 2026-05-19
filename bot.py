@@ -1,3 +1,8 @@
+"""
+⚡ هادر بوت — النسخة الاحترافية الكاملة والمصلحة (HTML)
+بوابة الويب الذكية لتسجيل الدخول + محرك النشر والتكرار التلقائي متعدد المستخدمين.
+"""
+
 import asyncio
 import os
 import logging
@@ -12,6 +17,7 @@ import config
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
+# إعداد البوت كواجهة مستخدم
 bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher()
 
@@ -21,60 +27,78 @@ USER_CONFIGS = {}  # لحفظ (الرسالة، الجروب، وحالة الت
 ACTIVE_TASKS = {}  # لحفظ مهام التكرار الشغالة بالخلفية عشان نقدر نوقفها
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  أوامر البوت الأساسية (لوحة التحكم والنشر)
+#  أوامر البوت الأساسية (لوحة التحكم والنشر بنظام HTML المضمن)
 # ══════════════════════════════════════════════════════════════════════════════
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
+    # جلب رابط الدومين الموفر من ريلواي تلقائياً
     domain = os.getenv('RAILWAY_PUBLIC_DOMAIN', '').strip()
-    web_app_url = f"https://{domain}/login-page" if domain else "https://your-railway-url.up.railway.app/login-page"
-    if domain and not domain.startswith('http'):
-        web_app_url = f"https://{domain}/login-page"
-
+    
+    # تنظيف الرابط للتأكد من صياغته بشكل صحيح كـ https
+    if domain:
+        if not domain.startswith('http'):
+            web_app_url = f"https://{domain}/login-page"
+        else:
+            web_app_url = f"{domain}/login-page"
+    else:
+        # رابط احتياطي في حال لم يتم العثور على المتغير باللوحة بعد
+        web_app_url = "https://your-railway-url.up.railway.app/login-page"
+    
+    # بناء الأزرار بالطريقة الصحيحة المتوافقة مع Aiogram v3
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔗 ربط حسابك الشخصي (بلمسة زر)", web_app=types.WebAppInfo(url=web_app_url))]
+        [
+            InlineKeyboardButton(
+                text="🔗 ربط حسابك الشخصي (بلمسة زر)", 
+                web_app=types.WebAppInfo(url=web_app_url)
+            )
+        ]
     ])
     
+    # نص الترحيب بنظام HTML المتوافق 100% مع سيرفرات تليجرام وبدون إيرورات
     welcome_text = (
-        "👋 **أهلاً بك في بوت هادر للنشر والتكرار التلقائي!**\n\n"
-        "1️⃣ أولاً: اضغط على الزر أدناه لربط حسابك عبر بوابة الويب الآمنة.\n"
-        "2️⃣ ثانياً: بعد الربط، استخدم الأوامر التالية لضبط النشر:\n\n"
-        "✍️ `/set_msg [الرسالة]` - لتحديد نص الرسالة التي سيتم تكرارها.\n"
-        "📢 `/set_group [معرف الجروب]` - لتحديد الجروب المستهدف (مثال: @group_name).\n"
-        "🚀 `/start_spam [الثواني]` - لبدء الإرسال التلقائي وتحديد الفاصل الزمني.\n"
-        "🛑 `/stop_spam` - لإيقاف النشر التلقائي فوراً."
+        "<b>👋 أهلاً بك في بوت هادر للنشر والتكرار التلقائي!</b>\n\n"
+        "1️⃣ <b>أولاً:</b> اضغط على الزر أدناه لربط حسابك عبر بوابة الويب الآمنة.\n"
+        "2️⃣ <b>ثانياً:</b> بعد الربط، استخدم الأوامر التالية لضبط النشر:\n\n"
+        "✍️ <code>/set_msg [الرسالة]</code> - لتحديد نص الرسالة التي سيتم تكرارها.\n"
+        "📢 <code>/set_group [معرف الجروب]</code> - لتحديد الجروب المستهدف (مثال: @group_name).\n"
+        "🚀 <code>/start_spam [الثواني]</code> - لبدء الإرسال التلقائي وتحديد الفاصل الزمني.\n"
+        "🛑 <code>/stop_spam</code> - لإيقاف النشر التلقائي فوراً."
     )
-    await message.reply(welcome_text, parse_mode="Markdown", reply_markup=keyboard)
+    await message.reply(welcome_text, parse_mode="HTML", reply_markup=keyboard)
+
 
 @dp.message(Command("set_msg"))
 async def cmd_set_msg(message: Message):
     user_id = str(message.from_user.id)
     msg_text = message.text.replace("/set_msg", "").strip()
     if not msg_text:
-        return await message.reply("❌ يرجى كتابة الرسالة بعد الأمر. مثال:\n`/set_msg السلام عليكم للبيع..`", parse_mode="Markdown")
+        return await message.reply("❌ يرجى كتابة الرسالة بعد الأمر. مثال:\n<code>/set_msg السلام عليكم للبيع..</code>", parse_mode="HTML")
     
     if user_id not in USER_CONFIGS: USER_CONFIGS[user_id] = {}
     USER_CONFIGS[user_id]["message"] = msg_text
-    await message.reply("✅ **تم حفظ نص الرسالة بنجاح!**")
+    await message.reply("✅ <b>تم حفظ نص الرسالة بنجاح!</b>", parse_mode="HTML")
+
 
 @dp.message(Command("set_group"))
 async def cmd_set_group(message: Message):
     user_id = str(message.from_user.id)
     group_target = message.text.replace("/set_group", "").strip()
     if not group_target:
-        return await message.reply("❌ يرجى كتابة معرف الجروب أو الرابط بعد الأمر. مثال:\n`/set_group @my_group`", parse_mode="Markdown")
+        return await message.reply("❌ يرجى كتابة معرف الجروب أو الرابط بعد الأمر. مثال:\n<code>/set_group @my_group</code>", parse_mode="HTML")
     
     if user_id not in USER_CONFIGS: USER_CONFIGS[user_id] = {}
     USER_CONFIGS[user_id]["group"] = group_target
-    await message.reply(f"✅ **تم تحديد الجروب المستهدف:** {group_target}")
+    await message.reply(f"✅ <b>تم تحديد الجروب المستهدف:</b> {group_target}", parse_mode="HTML")
 
-# محرك التكرار بالخلفية
+
+# محرك التكرار بالخلفية الخاص بكل مستخدم بشكل منفصل
 async def spam_worker(user_id, delay):
     session_path = f"sessions/user_{user_id}"
     client = TelegramClient(session_path, config.API_ID, config.API_HASH)
     await client.connect()
     
     if not await client.is_user_authorized():
-        await bot.send_message(chat_id=user_id, text="⚠️ **انتهت صلاحية جلسة حسابك! يرجى إعادة ربطه عبر أمر /start أولاً.**")
+        await bot.send_message(chat_id=user_id, text="⚠️ <b>انتهت صلاحية جلسة حسابك! يرجى إعادة ربطه عبر أمر /start أولاً.</b>", parse_mode="HTML")
         await client.disconnect()
         return
 
@@ -90,9 +114,10 @@ async def spam_worker(user_id, delay):
     except asyncio.CancelledError:
         log.info(f"🛑 تم إلغاء مهمة التكرار للمستخدم {user_id}")
     except Exception as e:
-        await bot.send_message(chat_id=user_id, text=f"❌ **توقف الإرسال بسبب خطأ:** {str(e)}")
+        await bot.send_message(chat_id=user_id, text=f"❌ <b>توقف الإرسال بسبب خطأ:</b> {str(e)}", parse_mode="HTML")
     finally:
         await client.disconnect()
+
 
 @dp.message(Command("start_spam"))
 async def cmd_start_spam(message: Message):
@@ -100,26 +125,27 @@ async def cmd_start_spam(message: Message):
     session_path = f"sessions/user_{user_id}.session"
     
     if not os.path.exists(session_path):
-        return await message.reply("❌ حسابك غير مربوط بعد! يرجى الضغط على زر الربط في `/start` أولاً.")
+        return await message.reply("❌ حسابك غير مربوط بعد! يرجى الضغط على زر الربط في <code>/start</code> أولاً.", parse_mode="HTML")
     
     config_data = USER_CONFIGS.get(user_id, {})
     if "message" not in config_data or "group" not in config_data:
-        return await message.reply("❌ يرجى تحديد الرسالة والجروب أولاً باستخدام أوامر `/set_msg` و `/set_group`.")
+        return await message.reply("❌ يرجى تحديد الرسالة والجروب أولاً باستخدام أوامر <code>/set_msg</code> و <code>/set_group</code>.", parse_mode="HTML")
     
     args = message.text.replace("/start_spam", "").strip()
     try:
-        delay = int(args) if args else 10  # افتراضي 10 ثواني إذا ما حدد وقت
-        if delay < 3: delay = 3  # حماية للحساب من باند تليجرام سريع
+        delay = int(args) if args else 10  # افتراضي 10 ثواني إذا لم يحدد وقت
+        if delay < 3: delay = 3  # حماية الحساب من الباند السريع
     except ValueError:
-        return await message.reply("❌ يرجى إدخال رقم صحيح للثواني. مثال: `/start_spam 15`")
+        return await message.reply("❌ يرجى إدخال رقم صحيح للثواني. مثال: <code>/start_spam 15</code>", parse_mode="HTML")
 
     if user_id in ACTIVE_TASKS:
-        return await message.reply("⏳ الإرسال التلقائي شغال بالفعل لديك! إذا تبي تغير الوقت أرسل `/stop_spam` ثم شغله من جديد.")
+        return await message.reply("⏳ الإرسال التلقائي شغال بالفعل لديك! إذا تبي تغير الوقت أرسل <code>/stop_spam</code> ثم شغله من جديد.", parse_mode="HTML")
 
-    # تشغيل الووركر بالخلفية وحفظ المهمة
+    # تشغيل الووركر بالخلفية وحفظ المهمة بالقاموس لضمان استقلاليتها
     task = asyncio.create_task(spam_worker(user_id, delay))
     ACTIVE_TASKS[user_id] = task
-    await message.reply(f"🚀 **بدأ الإرسال التلقائي بنجاح!**\n⏱️ الفاصل الزمني: كل {delay} ثواني.\nجروب الهدف: {config_data['group']}")
+    await message.reply(f"🚀 <b>بدأ الإرسال التلقائي بنجاح!</b>\n⏱️ الفاصل الزمني: كل {delay} ثواني.\n📢 الجروب المستهدف: {config_data['group']}", parse_mode="HTML")
+
 
 @dp.message(Command("stop_spam"))
 async def cmd_stop_spam(message: Message):
@@ -127,9 +153,10 @@ async def cmd_stop_spam(message: Message):
     if user_id in ACTIVE_TASKS:
         ACTIVE_TASKS[user_id].cancel()
         del ACTIVE_TASKS[user_id]
-        await message.reply("🛑 **تم إيقاف الإرسال والتكرار التلقائي فوراً بطلبك.**")
+        await message.reply("🛑 <b>تم إيقاف الإرسال والتكرار التلقائي فوراً بطلبك.</b>", parse_mode="HTML")
     else:
         await message.reply("ℹ️ الإرسال التلقائي متوقف بالفعل لديك وليس هناك أي عملية نشطة.")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  سيرفر الويب المدمج (الواجهة المحدثة مع اختيار الدول والأعلام)
@@ -208,7 +235,7 @@ async def handle_login_page(request):
             async function sendPhone() {
                 const prefix = document.getElementById('country-code').value;
                 let num = document.getElementById('phone-num').value.trim();
-                if(num.startsWith('0')) { num = num.substring(1); } // إزالة الصفر الافتراضي أول الرقم لو وجد
+                if(num.startsWith('0')) { num = num.substring(1); } // إزالة الصفر الزائد تلقائياً
                 const fullPhone = prefix + num;
                 
                 showError("");
@@ -303,7 +330,7 @@ async def api_send_code(request):
     
     try:
         await client.sign_in(phone=login_data["phone"], code=code, phone_code_hash=login_data["phone_code_hash"])
-        try: await bot.send_message(chat_id=user_id, text="🟢 **تم ربط حسابك الشخصي بنجاح عبر بوابة الويب الآمنة!**\n\nقم بضبط إعدادات النشر الآن عبر أمر:\n`/set_msg` و `/set_group`")
+        try: await bot.send_message(chat_id=user_id, text="🟢 <b>تم ربط حسابك الشخصي بنجاح عبر بوابة الويب الآمنة!</b>\n\nقم بضبط إعدادات النشر الآن عبر الأوامر الكودية التالية:\n<code>/set_msg</code> ثم <code>/set_group</code>", parse_mode="HTML")
         except Exception: pass
         return web.json_response({"success": True, "need_password": False})
     except SessionPasswordNeededError:
@@ -321,14 +348,14 @@ async def api_send_password(request):
     
     try:
         await client.sign_in(password=password)
-        try: await bot.send_message(chat_id=user_id, text="🟢 **تم التحقق من كلمة المرور وربط حسابك بنجاح!**")
+        try: await bot.send_message(chat_id=user_id, text="🟢 <b>تم التحقق من كلمة المرور وربط حسابك بنجاح!</b>", parse_mode="HTML")
         except Exception: pass
         return web.json_response({"success": True})
     except Exception as e:
         return web.json_response({"success": False, "error": str(e)})
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  التشغيل المتزامن
+#  بدء التشغيل المتزامن للسيرفر وللبوت معاً
 # ══════════════════════════════════════════════════════════════════════════════
 async def main():
     app = web.Application()
@@ -345,7 +372,7 @@ async def main():
     await site.start()
     log.info(f"🌐 سيرفر الويب المحدث شغال على المنفذ: {port}")
     
-    log.info("🚀 تشغيل البوت الرسمي بمحرك التكرار الكامل...")
+    log.info("🚀 تشغيل البوت الرسمي بمحرك التكرار الكامل ونظام HTML...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
