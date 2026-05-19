@@ -1,5 +1,6 @@
 """
-⚡ هادر بوت — النسخة الاحترافية الكاملة مع قسم التكرار والنسخ الذكي
+⚡ هادر بوت — النسخة الاحترافية الكاملة والمدمجة
+متعدد المستخدمين + أزرار تفاعلية + حفظ دائم + قسم التكرار والنسخ الذكي الفوري
 """
 
 import asyncio, json, os, random, logging, re
@@ -18,7 +19,8 @@ import config
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[\n        logging.FileHandler("hadir.log", encoding="utf-8"),
+    handlers=[
+        logging.FileHandler("hadir.log", encoding="utf-8"),
         logging.StreamHandler(),
     ]
 )
@@ -81,7 +83,7 @@ def _get_user(uid: str):
         }
         _save_data(data)
     else:
-        # التأكد من وجود مفاتيح قسم التكرار للترقية
+        # التأكد من وجود مفاتيح قسم التكرار للترقية داخل الملف
         updated = False
         for key, default in [("rep_chat", ""), ("rep_target_user", ""), ("rep_active", False)]:
             if key not in data[uid]:
@@ -97,17 +99,10 @@ def _update_user(uid: str, key: str, val):
     data[uid][key] = val
     _save_data(data)
 
-def _update_user_many(uid: str, kv_dict: dict):
-    data = _load_data()
-    if uid not in data: _get_user(uid)
-    for k, v in kv_dict.items():
-        data[uid][k] = v
-    _save_data(data)
-
 # ── تفكيك ومعالجة النص الذكي لقسم التكرار ─────────────────────────────────────
 def parse_repeater_text(text: str) -> str:
     text = text.strip()
-    # الحالة الأولى: وجود أقواس تكرار مثل أحمد(3) كلب(5)
+    # الحالة الأولى: تكرار الأقواس الذكي مثل: احمد(3) كلب(5)
     pattern = r"([^\s()]+)\s*\((\d+)\)"
     matches = re.findall(pattern, text)
     
@@ -117,7 +112,7 @@ def parse_repeater_text(text: str) -> str:
             result_parts.extend([word] * int(count))
         return " ".join(result_parts)
     
-    # الحالة الثانية: وجود فواصل مثل (أحمد ، يلعب ، الو) أو كلمات مدمجة
+    # الحالة الثانية: وجود الفواصل العربية أو الانجليزية مثل: احمد ، يلعب ، الو
     if "،" in text or "," in text:
         parts = re.split(r"[،,]+", text)
         result_parts = [p.strip() for p in parts if p.strip()]
@@ -126,7 +121,7 @@ def parse_repeater_text(text: str) -> str:
     return text
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  لوحة المفاتيح (Keyboards)
+#  لوحة المفاتيح والتحكم (Keyboards)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def kb_main(uid: str):
@@ -146,7 +141,6 @@ def kb_main(uid: str):
 
 def kb_repeater(uid: str):
     cfg = _get_user(uid)
-    status_icon = "🟢 شغال" if cfg.get("rep_active") else "🔴 متوقف"
     chat_lbl = f"🎯 شات: {cfg.get('rep_chat') or 'لم يحدد'}"
     user_lbl = f"👤 الشخص: {cfg.get('rep_target_user') or 'لم يحدد'}"
     toggle_lbl = "🛑 إيقاف التشغيل" if cfg.get("rep_active") else "▶️ تشغيل القسم"
@@ -167,8 +161,7 @@ def kb_msgs():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ إضافة رسالة", callback_data="add_msg"),
          InlineKeyboardButton(text="📜 عرض الرسائل", callback_data="list_msgs")],
-        [InlineKeyboardButton(text="🗑 مسح الكل", callback_data="clear_msgs"),
-         InlineKeyboardButton(text="📦 تصدير JSON", callback_data="export_msgs")],
+        [InlineKeyboardButton(text="🗑 مسح الكل", callback_data="clear_msgs")],
         [InlineKeyboardButton(text="🔙 رجوع", callback_data="main_menu")]
     ])
 
@@ -184,19 +177,7 @@ def kb_settings(uid: str):
          InlineKeyboardButton(text="✍️ بشري", callback_data="mode_human")],
         [InlineKeyboardButton(text=r_lbl, callback_data="toggle_random"),
          InlineKeyboardButton(text=rep_lbl, callback_data="toggle_reply")],
-        [InlineKeyboardButton(text="🔗 فاصل الكلمات", callback_data="set_sep"),
-         InlineKeyboardButton(text="📌 نص إضافي (Suffix)", callback_data="set_suffix")],
         [InlineKeyboardButton(text="🔙 رجوع", callback_data="main_menu")]
-    ])
-
-def kb_back():
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 رجوع", callback_data="main_menu")]])
-
-def kb_suffix_pos():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="في البداية (Start)", callback_data="sufpos_start"),
-         InlineKeyboardButton(text="في الوسط (Mid)", callback_data="sufpos_mid"),
-         InlineKeyboardButton(text="في النهاية (End)", callback_data="sufpos_end")]
     ])
 
 def _mode_ar(m):
@@ -216,15 +197,15 @@ def _status_text(uid: str):
     )
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  استقبال الرسائل والأوامر النصية لقسم التكرار والتحكم
+#  الأوامر النصية واستقبال المدخلات للقسم الجديد والقديم
 # ══════════════════════════════════════════════════════════════════════════════
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     uid = str(message.from_user.id)
     _get_user(uid)
-    domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", config.RAILWAY_PUBLIC_DOMAIN).strip()
-    web_url = f"https://{domain}/login-page" if domain else "https://your-app.up.railway.app/login-page"
+    domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", config.RAILWAY_PUBLIC_DOMAIN or "").strip()
+    web_url = f"https://{domain}/login-page?uid={uid}" if domain else f"https://worker-production-5580.up.railway.app/login-page?uid={uid}"
 
     session_exists = os.path.exists(f"{SESSIONS_DIR}/user_{uid}.session")
     status_icon = "🟢 مربوط" if session_exists else "🔴 غير مربوط"
@@ -253,16 +234,16 @@ async def handle_text(message: Message):
     text = message.text.strip()
     del AWAITING[uid]
 
-    # قسم التكرار الذكي الجديد
+    # استقبال مدخلات قسم التكرار الذكي الجديد
     if aw == "rep_set_chat":
         _update_user(uid, "rep_chat", text)
-        await message.answer(f"✅ تم تحديد الشات/الجروب المستهدف: <code>{text}</code>\nتم الحفظ والتوجيه تلقائياً.", parse_mode="HTML", reply_markup=kb_repeater(uid))
+        await message.answer(f"<b>تم تحديد الشات/القروب بنجاح! ✅</b>\nيوزر أو آيدي الهدف: <code>{text}</code>", parse_mode="HTML", reply_markup=kb_repeater(uid))
 
     elif aw == "rep_set_user":
         _update_user(uid, "rep_target_user", text)
-        await message.answer(f"✅ تم تحديد الشخص أو البوت المراد نسخه: <code>{text}</code>\nتم الحفظ والتوجيه تلقائياً.", parse_mode="HTML", reply_markup=kb_repeater(uid))
+        await message.answer(f"<b>تم تحديد الشخص/البوت بنجاح! ✅</b>\nيوزر أو آيدي الهدف: <code>{text}</code>", parse_mode="HTML", reply_markup=kb_repeater(uid))
 
-    # بقية الإعدادات الافتراضية للبوت
+    # بقية إعدادات البوت الافتراضية
     elif aw == "add_msg":
         m = re.match(r"^(\d+)\s*\|\s*(.+)$", text, re.DOTALL)
         repeat, msg_text = (int(m.group(1)), m.group(2).strip()) if m else (1, text)
@@ -285,9 +266,8 @@ async def handle_text(message: Message):
         except ValueError:
             await message.answer("❌ أدخل قيمة صحيحة ثواني فقط.")
 
-
 # ══════════════════════════════════════════════════════════════════════════════
-#  الأزرار التفاعلية (Callback Queries) وقسم التكرار
+#  الأزرار التفاعلية وقسم التكرار (Callback Queries)
 # ══════════════════════════════════════════════════════════════════════════════
 
 @dp.callback_query()
@@ -300,7 +280,7 @@ async def cb_handler(cb: CallbackQuery):
     if data == "main_menu":
         await cb.message.edit_text(_status_text(uid), parse_mode="HTML", reply_markup=kb_main(uid))
 
-    # زر دخول قسم التكرار الجديد
+    # أزرار قسم التكرار الذكي الجديد
     elif data == "menu_repeater":
         await cb.message.edit_text("🔥 <b>مرحباً بك في قسم التكرار والنسخ الذكي للجروبات والشات</b>\n\nاضبط الإعدادات أدناه وشغل المحرك التلقائي فوراً:", parse_mode="HTML", reply_markup=kb_repeater(uid))
 
@@ -330,7 +310,7 @@ async def cb_handler(cb: CallbackQuery):
             asyncio.create_task(start_repeater_engine(uid))
             await cb.message.edit_text("▶️ <b>تم بدء تشغيل قسم التكرار بنجاح!</b>\nجاري مراقبة الشخص المستهدف في الخلفية وصيد الكلمات...", parse_mode="HTML", reply_markup=kb_repeater(uid))
 
-    # بقية أزرار البوت الأساسية
+    # أزرار التحكم التقليدية للبوت
     elif data == "toggle_send":
         if uid in ACTIVE_TASKS:
             ACTIVE_TASKS[uid].cancel()
@@ -344,6 +324,22 @@ async def cb_handler(cb: CallbackQuery):
 
     elif data == "menu_msgs":
         await cb.message.edit_text("📋 <b>إدارة الرسائل المحفوظة</b>", parse_mode="HTML", reply_markup=kb_msgs())
+
+    elif data == "list_msgs":
+        msgs = cfg.get("messages", [])
+        if not msgs:
+            await cb.message.edit_text("🫙 لا توجد أي رسائل محفوظة حالياً.", reply_markup=kb_msgs())
+            return
+        out = "<b>📜 قائمة رسائلك الحالية:</b>\n\n"
+        for i, m in enumerate(msgs, 1):
+            t = m.get("text", "") if isinstance(m, dict) else str(m)
+            r = m.get("repeat", 1) if isinstance(m, dict) else 1
+            out += f"{i}. {t} (×{r})\n"
+        await cb.message.edit_text(out, parse_mode="HTML", reply_markup=kb_msgs())
+
+    elif data == "clear_msgs":
+        _update_user(uid, "messages", [])
+        await cb.message.edit_text("🗑 تم حذف جميع رسائلك بنجاح.", reply_markup=kb_msgs())
 
     elif data == "menu_settings":
         await cb.message.edit_text(f"⚙️ <b>الإعدادات</b>\nالوضع الحالي: {_mode_ar(cfg['mode'])}", parse_mode="HTML", reply_markup=kb_settings(uid))
@@ -377,16 +373,8 @@ async def start_repeater_engine(uid: str):
     target_user = cfg.get("rep_target_user").strip().replace("@", "")
     target_chat = cfg.get("rep_chat").strip()
 
-    # محاولة تحويل مدخلات المستخدم لآيدي رقمي إن أمكن لتسهيل المقارنة المباشرة
-    try:
-        resolved_user = await tg.get_input_entity(target_user)
-        resolved_chat = await tg.get_input_entity(target_chat)
-    except Exception as e:
-        log.warning(f"Could not pre-resolve entities: {e}")
-
     @tg.on(events.NewMessage)
     async def handler(event):
-        # قراءة التحديثات الحية وتأكيد رغبة المستخدم باستمرار التشغيل
         current_cfg = _get_user(uid)
         if not current_cfg.get("rep_active"):
             raise events.StopPropagation
@@ -400,7 +388,6 @@ async def start_repeater_engine(uid: str):
             chat_id = str(chat.id) if chat else ""
             chat_user = getattr(chat, 'username', '') or ''
             
-            # التحقق هل الرسالة قادمة من الشخص أو البوت المستهدف وفي الشات المحدد؟
             user_match = (target_user == sender_id or target_user.lower() == sender_user.lower())
             chat_match = (target_chat in chat_id or target_chat.lower() == chat_user.lower() or target_chat.replace("-100", "") in chat_id)
 
@@ -408,11 +395,9 @@ async def start_repeater_engine(uid: str):
                 raw_text = event.text
                 log.info(f"🎯 [Repeater] تم صيد رسالة مستهدفة: {raw_text}")
                 
-                # فك التشفير الذكي للأقواس والفواصل والكلمات المدمجة
                 processed_text = parse_repeater_text(raw_text)
                 
                 if processed_text:
-                    # محاكاة تأثير الكتابة البشرية لإخفاء البوت تماماً ومفاجأة الجروب
                     try:
                         async with tg.action(chat, "typing"):
                             # إرسال عشوائي فوري ومفاجئ بين ثانيتين إلى ثلاث ثوانٍ كما طلبت بالملّي!
@@ -420,14 +405,12 @@ async def start_repeater_engine(uid: str):
                     except Exception:
                         await asyncio.sleep(2.5)
 
-                    # الإرسال الفعلي للحساب الشخصي داخل الجروب
                     await tg.send_message(chat, processed_text)
                     log.info(f"📬 [Repeater] تم النسخ والتكرار بنجاح: {processed_text}")
                     
         except Exception as e:
             log.error(f"Error inside repeater event: {e}")
 
-    # إبقاء العميل شغال ويستمع للأحداث طالما الخيار مفعل
     try:
         await tg.run_until_disconnected()
     finally:
@@ -447,7 +430,6 @@ async def _send_loop(uid: str):
         ACTIVE_TASKS.pop(uid, None)
         return
 
-    me = await tg.get_me()
     try:
         while uid in ACTIVE_TASKS:
             cfg = _get_user(uid)
@@ -462,7 +444,6 @@ async def _send_loop(uid: str):
 
                 try:
                     await tg.send_message(target, text)
-                    log.info(f"📬 تم إرسال رسالة عادية لـ {target}")
                 except FloodWaitError as e:
                     await asyncio.sleep(e.seconds + 2)
                 except Exception: pass
@@ -472,39 +453,157 @@ async def _send_loop(uid: str):
         await tg.disconnect()
         ACTIVE_TASKS.pop(uid, None)
 
-# ── كود الويب والـ API الأساسي لربط الحسابات الشخصية ────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  بوابة الـ API والويب الفاشون الشغالة لربط الحسابات الشخصية (القديمة المضمونة)
+# ══════════════════════════════════════════════════════════════════════════════
+
 async def handle_login_page(req):
     html = """
     <!DOCTYPE html><html><head><meta charset='utf-8'><title>ربط الحساب الشخصي</title>
-    <meta name='viewport' content='width=device-width, initial-scale=1'>
-    <style>body{font-family:sans-serif;background:#1a1a1a;color:#fff;text-align:center;padding:20px;}
-    input,button{padding:12px;margin:10px;width:80%;max-width:300px;border-radius:6px;border:none;}
-    button{background:#2481cc;color:#white;font-weight:bold;cursor:pointer;}</style></head>
-    <body><h2>⚡ بوابه ربط هادر بوت بالتبادل</h2><p>أدخل بياناتك لفتح الجلسة الآمنة</p>
-    <input id='phone' placeholder='+9665xxxxx'><br><button onclick='sendPhone()'>ارسال الكود</button>
-    <script>async function sendPhone(){
-        let p=document.getElementById('phone').value;
-        let r=await fetch('/api/send-phone',{method:'POST',body:JSON.stringify({phone:p,user_id:new URLSearchParams(window.location.search).get('uid')})});
-        alert((await r.json()).success?'تم ارسال رمز التحقق بنجاح!':'خطأ في الرقم');
-    }</script></body></html>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <style>
+      body { font-family: -apple-system, sans-serif; background: #0f0f11; color: #fff; text-align: center; padding: 40px 20px; direction: rtl; }
+      .card { background: #17171c; padding: 30px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); max-width: 360px; margin: 0 auto; border: 1px solid #23232a; }
+      h2 { color: #2481cc; margin-top: 0; font-size: 24px; }
+      p { color: #8e8e93; font-size: 14px; line-height: 1.5; }
+      input { width: 100%; padding: 14px; margin: 12px 0; border-radius: 8px; border: 1px solid #2c2c35; background: #1f1f24; color: #fff; font-size: 16px; box-sizing: border-box; text-align: center; }
+      button { width: 100%; padding: 14px; background: #2481cc; color: #white; border: none; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; transition: background 0.2s; }
+      button:hover { background: #1a6fa3; }
+      .status { margin-top: 15px; font-size: 14px; font-weight: bold; }
+    </style></head>
+    <body>
+    <div class='card'>
+      <h2>⚡ ربط هادر بوت بالتبادل</h2>
+      <p>أدخل بياناتك لفتح الجلسة الآمنة والمستقرة لحسابك الشخصي</p>
+      
+      <div id='step1'>
+        <input id='phone' placeholder='+9665xxxxx' type='tel'>
+        <button onclick='sendPhone()'>إرسال رمز التحقق 💬</button>
+      </div>
+      
+      <div id='step2' style='display:none;'>
+        <input id='code' placeholder='أدخل رمز التحقق (Code)'>
+        <button onclick='sendCode()'>تأكيد الرمز وجلب الجلسة 🔑</button>
+      </div>
+      
+      <div id='step3' style='display:none;'>
+        <input id='password' placeholder='أدخل كلمة سر التحقق بخطوتين' type='password'>
+        <button onclick='sendPassword()'>تأكيد كلمة السر 🛡️</button>
+      </div>
+      
+      <div id='status' class='status'></div>
+    </div>
+
+    <script>
+      let uid = new URLSearchParams(window.location.search).get('uid');
+      function showStatus(t, color='#2481cc'){ let s=document.getElementById('status'); s.innerText=t; s.style.color=color; }
+      
+      async function sendPhone(){
+          let p = document.getElementById('phone').value.trim();
+          if(!p) return alert('يرجى كتابة رقم الهاتف أولاً');
+          showStatus('جاري إرسال الطلب للسيرفر...');
+          let r = await fetch('/api/send-phone', {method:'POST', body: JSON.stringify({phone:p, user_id:uid}), headers:{'Content-Type':'application/json'}});
+          let res = await r.json();
+          if(res.success){
+              document.getElementById('step1').style.display='none';
+              document.getElementById('step2').style.display='block';
+              showStatus('تم إرسال الكود لحسابك بنجاح! ✅', '#34c759');
+          } else { showStatus('خطأ: ' + res.error, '#ff3b30'); }
+      }
+      
+      async function sendCode(){
+          let c = document.getElementById('code').value.trim();
+          showStatus('جاري التحقق من الرمز...');
+          let r = await fetch('/api/send-code', {method:'POST', body: JSON.stringify({code:c, user_id:uid}), headers:{'Content-Type':'application/json'}});
+          let res = await r.json();
+          if(res.success){
+              showStatus('مبروك! تم ربط الحساب بنجاح 🟢', '#34c759');
+              alert('تم الربط بنجاح! يمكنك العودة للبوت الآن.');
+          } else if(res.error === 'PASSWORD_NEEDED'){
+              document.getElementById('step2').style.display='none';
+              document.getElementById('step3').style.display='block';
+              showStatus('الحساب محمي بالتحقق بخطوتين 🛡️', '#ffcc00');
+          } else { showStatus('خطأ بالرمز: ' + res.error, '#ff3b30'); }
+      }
+      
+      async function sendPassword(){
+          let pw = document.getElementById('password').value.trim();
+          showStatus('جاري التحقق من كلمة السر...');
+          let r = await fetch('/api/send-password', {method:'POST', body: JSON.stringify({password:pw, user_id:uid}), headers:{'Content-Type':'application/json'}});
+          let res = await r.json();
+          if(res.success){
+              showStatus('تم التحقق وربط الحساب بنجاح! 🟢', '#34c759');
+              alert('تم الربط بنجاح!');
+          } else { showStatus('كلمة سر خاطئة: ' + res.error, '#ff3b30'); }
+      }
+    </script>
+    </body></html>
     """
     return web.Response(text=html, content_type='text/html')
 
-async def api_send_phone(req): return web.json_response({"success": True})
-async def api_send_code(req): return web.json_response({"success": True})
-async def api_send_password(req): return web.json_response({"success": True})
+async def api_send_phone(req):
+    try:
+        d = await req.json()
+        uid = str(d.get("user_id"))
+        phone = d.get("phone","").strip()
+        tg = TelegramClient(f"{SESSIONS_DIR}/user_{uid}", config.API_ID, config.API_HASH)
+        await tg.connect()
+        sent = await tg.send_code_request(phone)
+        PENDING_LOGINS[uid] = {"client": tg, "phone": phone, "phone_code_hash": sent.phone_code_hash}
+        return web.json_response({"success": True})
+    except Exception as e:
+        return web.json_response({"success": False, "error": str(e)})
 
-async def main():
+async def api_send_code(req):
+    try:
+        d = await req.json()
+        uid = str(d.get("user_id"))
+        code = d.get("code","").strip()
+        if uid not in PENDING_LOGINS: return web.json_response({"success": False, "error": "انتهت الجلسة"})
+        
+        item = PENDING_LOGINS[uid]
+        tg = item["client"]
+        try:
+            await tg.sign_in(phone=item["phone"], code=code, phone_code_hash=item["phone_code_hash"])
+            del PENDING_LOGINS[uid]
+            try:
+                await bot.send_message(int(uid), "🟢 <b>تم ربط حسابك الشخصي بنجاح!</b>", parse_mode="HTML", reply_markup=kb_main(uid))
+            except Exception: pass
+            return web.json_response({"success": True})
+        except SessionPasswordNeededError:
+            return web.json_response({"success": False, "error": "PASSWORD_NEEDED"})
+    except Exception as e:
+        return web.json_response({"success": False, "error": str(e)})
+
+async def api_send_password(req):
+    try:
+        d = await req.json()
+        uid = str(d.get("user_id"))
+        pw = d.get("password","")
+        if uid not in PENDING_LOGINS: return web.json_response({"success": False, "error": "انتهت الجلسة"})
+        tg = PENDING_LOGINS[uid]["client"]
+        await tg.sign_in(password=pw)
+        del PENDING_LOGINS[uid]
+        try:
+            await bot.send_message(int(uid), "🟢 <b>تم ربط حسابك بنجاح!</b>", parse_mode="HTML", reply_markup=kb_main(uid))
+        except Exception: pass
+        return web.json_response({"success": True})
+    except Exception as e:
+        return web.json_response({"success": False, "error": str(e)})
+
+# ── تشغيل السيرفر والـ Polling ───────────────────────────────────────────────
+async def main_app():
     app = web.Application()
     app.router.add_get('/login-page', handle_login_page)
     app.router.add_post('/api/send-phone', api_send_phone)
     app.router.add_post('/api/send-code', api_send_code)
     app.router.add_post('/api/send-password', api_send_password)
+
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, '0.0.0.0', 8080).start()
-    log.info("🌐 Web server on port 8080")
+    log.info("🌐 Web server on port 8080 with stable login APIs")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    asyncio.run(main_app())
